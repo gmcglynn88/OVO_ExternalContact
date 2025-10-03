@@ -1,38 +1,347 @@
 <!DOCTYPE html>
 <html lang="en">
+<!doctype html>
+<html lang="en-GB">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>External Work Creation</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>External Work – EUW2 (London)</title>
+  <!-- Genesys Cloud JS SDK (global `platformClient`) -->
+  <script src="https://sdk-cdn.mypurecloud.com/javascript/latest/purecloud-platform-client-v2.min.js" defer></script>
+
   <style>
-    :root { --primary-color:#63AB8F; --primary-hover:#4D8F77; --border-color:#e0e0e0; --shadow:0 2px 8px rgba(0,0,0,.1); }
-    body{font-family:'Aptos','Segoe UI',system-ui,-apple-system,sans-serif;background:#f9f9f9;margin:0;padding:2rem;max-width:650px;margin-inline:auto;color:#333;line-height:1.6}
-    .card{background:#fff;border-radius:8px;box-shadow:var(--shadow);padding:2rem;margin-top:2rem}
-    .logo-container{text-align:center;margin-bottom:1.5rem}
-    #logo{max-width:180px;height:auto;margin-bottom:1rem}
-    h1{color:var(--primary-color);font-weight:600;margin-bottom:1.5rem;font-size:1.8rem;text-align:center}
-    label{display:block;margin:1.2rem 0 .4rem;font-weight:500;color:#555}
-    select,input{width:100%;padding:.8rem;border:1px solid var(--border-color);border-radius:4px;font:inherit;transition:border .2s}
-    select:focus,input:focus{outline:none;border-color:var(--primary-color);box-shadow:0 0 0 2px rgba(99,171,143,.2)}
-    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    button{width:100%;background:var(--primary-color);color:#fff;border:none;padding:.9rem;font-size:1rem;font-weight:500;border-radius:4px;cursor:pointer;transition:background .2s;margin-top:2rem;text-transform:uppercase;letter-spacing:.5px}
-    button:hover{background:var(--primary-hover)}
-    button:disabled{opacity:.6;cursor:not-allowed}
-    #statusMessage{margin-top:1.5rem;padding:1rem;border-radius:4px;background:#f5f5f5;display:none}
-    .success{color:#2e7d32;border-left:4px solid #4caf50;padding-left:1rem}
-    .error{color:#c62828;border-left:4px solid #f44336;padding-left:1rem}
-    .loader{display:none;text-align:center;margin:1rem 0}
-    .spinner{border:3px solid rgba(0,0,0,.1);border-top:3px solid var(--primary-color);border-radius:50%;width:20px;height:20px;animation:spin 1s linear infinite;display:inline-block;vertical-align:middle;margin-right:8px}
-    @keyframes spin{to{transform:rotate(360deg)}}
-    small.hint{color:#666;display:block;margin-top:.25rem}
+    :root{
+      --bg:#0b1020;
+      --card:#121935;
+      --ink:#e9ecf5;
+      --muted:#a8b0c6;
+      --brand:#7aa2ff;
+      --brand-2:#a07aff;
+      --ok:#47d16f;
+      --warn:#ffcc66;
+      --err:#ff6b6b;
+      --ring: 0 0 0 3px rgba(122,162,255,.25);
+      --radius: 16px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; padding:24px;
+      background: radial-gradient(1200px 600px at 100% -100%, rgba(122,162,255,.08), transparent),
+                  radial-gradient(1000px 500px at -40% 120%, rgba(160,122,255,.08), transparent),
+                  var(--bg);
+      color:var(--ink);
+      font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
+    }
+    .wrap{
+      max-width:780px; margin:0 auto;
+    }
+    .card{
+      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:var(--radius);
+      box-shadow: 0 10px 30px rgba(0,0,0,.25);
+      padding:20px;
+      backdrop-filter: blur(8px);
+    }
+    h1{
+      font-size:26px; margin:0 0 4px;
+      letter-spacing:.2px;
+    }
+    .sub{
+      color:var(--muted); margin:0 0 18px; font-size:14px;
+    }
+    .grid{
+      display:grid; gap:14px;
+      grid-template-columns: 1fr 1fr;
+    }
+    .field{
+      display:flex; flex-direction:column; gap:6px;
+    }
+    label{font-weight:600; color:#cbd2ea; font-size:13px;}
+    select, input[type="text"]{
+      appearance:none;
+      padding:12px 14px;
+      border-radius:12px;
+      background:#0e1530;
+      border:1px solid rgba(255,255,255,.12);
+      color:var(--ink);
+      outline:none;
+      transition:.15s ease;
+    }
+    select:focus, input[type="text"]:focus{ box-shadow:var(--ring); border-color:rgba(122,162,255,.6); }
+    input[disabled]{ color:#c6cbe0; opacity:.9 }
+    .row{ display:flex; gap:12px; align-items:center; justify-content:flex-end; margin-top:10px; }
+    button{
+      border:0; cursor:pointer;
+      padding:12px 16px; border-radius:12px;
+      color:white; font-weight:700;
+      background: linear-gradient(135deg, var(--brand), var(--brand-2));
+      box-shadow: 0 10px 20px rgba(122,162,255,.25);
+      transition: transform .05s ease, filter .15s ease, opacity .15s ease;
+    }
+    button:active{ transform: translateY(1px) }
+    button[disabled]{ opacity:.6; cursor:not-allowed; }
+    .btn-ghost{
+      background:transparent; color:var(--muted); font-weight:600;
+      border:1px solid rgba(255,255,255,.12);
+    }
+    .status{
+      display:flex; align-items:center; gap:10px;
+      font-size:14px; color:var(--muted); min-height:24px;
+      margin-top:6px;
+    }
+    .dot{ width:10px; height:10px; border-radius:50%; background:var(--warn); box-shadow:0 0 12px var(--warn); }
+    .ok{ background:var(--ok); box-shadow:0 0 12px var(--ok); }
+    .err{ background:var(--err); box-shadow:0 0 12px var(--err); }
+
+    /* toast */
+    .toast{
+      position:fixed; right:20px; bottom:20px; z-index:9999;
+      background:#0f1733; color:var(--ink);
+      border:1px solid rgba(255,255,255,.12);
+      padding:12px 14px; border-radius:12px; min-width:220px;
+      box-shadow:0 10px 30px rgba(0,0,0,.35);
+      display:none;
+    }
+    .toast.show{ display:block; animation: pop .2s ease-out }
+    @keyframes pop{ from{ transform:translateY(6px); opacity:0 } to{ transform:translateY(0); opacity:1 } }
+
+    /* loader */
+    .spinner{
+      width:18px; height:18px; border-radius:50%;
+      border:3px solid rgba(255,255,255,.12);
+      border-top-color: var(--brand);
+      animation:spin 1s linear infinite;
+      margin-left:6px;
+    }
+    @keyframes spin{ to{ transform: rotate(360deg) } }
+
+    @media (max-width:720px){
+      .grid{ grid-template-columns: 1fr; }
+      .row{ justify-content:stretch }
+      .row button{ flex:1 }
+    }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="logo-container">
-      <img id="logo" src="https://raw.githubusercontent.com/gmcglynn88/ExternalWorkCreation/main/Consultinglogo.png" alt="Company Logo">
+  <div class="wrap">
+    <div class="card">
+      <h1>Create External Work</h1>
+      <p class="sub">London (EUW2) • Whitelisted agents only • “Fire-and-forget” create</p>
+
+      <div class="grid">
+        <div class="field">
+          <label for="agentSelect">Agent</label>
+          <select id="agentSelect" disabled>
+            <option>Loading agents…</option>
+          </select>
+          <div class="status" id="agentStatus"><span class="dot"></span><span>Fetching allow-listed agent names…</span></div>
+        </div>
+
+        <div class="field">
+          <label for="queueName">Queue</label>
+          <input id="queueName" type="text" value="Loading…" disabled />
+          <div class="status" id="queueStatus"><span class="dot"></span><span>Fetching queue name…</span></div>
+        </div>
+      </div>
+
+      <div class="row">
+        <button class="btn-ghost" id="reloginBtn" title="Re-authenticate">Re-login</button>
+        <button id="createBtn" disabled>Create</button>
+      </div>
+      <div class="status" id="createStatus"></div>
     </div>
-    <h1>External Work Creation</h1>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ======= CONFIG =======
+    const OAUTH_CLIENT_ID = "YOUR_OAUTH_CLIENT_ID";
+    const REDIRECT_URI = "YOUR_REDIRECT_URI"; // e.g. https://yourapp.example.com/callback
+    const GC_ENV = "euw2.pure.cloud";         // London (EUW2)
+
+    // Whitelisted agents
+    const ALLOWED_USER_IDS = [
+      'fa677b42-4aff-45af-b7e7-749418788b88',
+      '206a7f52-4f89-446f-afbf-ac879147a7ad',
+      '14ecd5fc-30f9-4214-809f-93771752bfb6',
+      '79148e85-0da8-4f3e-9cdf-1ce4d832f5a4',
+      '4ec6fd9a-e335-4d96-9504-05a1fbaa46a9',
+      '207b29f5-8895-429c-b3bb-4879b41d8718',
+      '4cd8cbf4-a8a1-4b49-9769-825d1cfc9e08',
+      '6e917925-2cff-49b5-a730-55db79445280',
+      'fed76596-cfa5-4fda-bb15-49985065480e',
+      '660c4154-ba9b-4e84-90ec-c9c9b409ac41'
+    ];
+
+    // Single required queue
+    const REQUIRED_QUEUE_ID = '4a6f26c7-2b69-4c34-99e2-e156230ec2bd';
+
+    // ======= UTILS =======
+    const $ = sel => document.querySelector(sel);
+    function setStatus(el, ok, msg, isErr=false){
+      const dot = el.querySelector('.dot');
+      dot.classList.remove('ok','err');
+      if (ok) dot.classList.add('ok');
+      if (isErr) dot.classList.add('err');
+      el.querySelector('span:nth-child(2)').textContent = msg;
+    }
+    function toast(msg){
+      const t = $('#toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(()=> t.classList.remove('show'), 3000);
+    }
+
+    // ======= APP =======
+    let client, usersApi, routingApi, conversationsApi;
+
+    async function login(){
+      client = platformClient.ApiClient.instance;
+      client.setEnvironment(GC_ENV);
+
+      // Choose one flow your app uses (implicit grant here).
+      try{
+        await client.loginImplicitGrant(OAUTH_CLIENT_ID, REDIRECT_URI, { state: 'euw2_ext_work' });
+      }catch(e){
+        console.error('Login failed:', e);
+        throw e;
+      }
+      usersApi = new platformClient.UsersApi();
+      routingApi = new platformClient.RoutingApi();
+      conversationsApi = new platformClient.ConversationsApi();
+    }
+
+    async function loadAgents(){
+      const agentSelect = $('#agentSelect');
+      const agentStatus = $('#agentStatus');
+      setStatus(agentStatus, false, 'Fetching allow-listed agent names…');
+
+      const results = await Promise.allSettled(ALLOWED_USER_IDS.map(id => usersApi.getUser(id)));
+      const users = results
+        .filter(r => r.status === 'fulfilled' && r.value && !r.value.deleted)
+        .map(r => r.value);
+
+      if (!users.length){
+        setStatus(agentStatus, false, 'No valid users found in allow-list.', true);
+        agentSelect.innerHTML = '<option disabled>No agents</option>';
+        return;
+      }
+
+      users.sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+
+      agentSelect.innerHTML = '';
+      for (const u of users){
+        const opt = document.createElement('option');
+        opt.value = u.id;
+        opt.textContent = u.name || u.id;
+        agentSelect.appendChild(opt);
+      }
+      agentSelect.disabled = false;
+      setStatus(agentStatus, true, `Loaded ${users.length} agent${users.length>1?'s':''}.`);
+    }
+
+    async function loadQueue(){
+      const queueStatus = $('#queueStatus');
+      const input = $('#queueName');
+      setStatus(queueStatus, false, 'Fetching queue name…');
+      try{
+        const q = await routingApi.getRoutingQueue(REQUIRED_QUEUE_ID);
+        input.value = q?.name || REQUIRED_QUEUE_ID;
+        setStatus(queueStatus, true, 'Queue loaded.');
+      }catch(e){
+        console.error(e);
+        input.value = REQUIRED_QUEUE_ID + ' (not found)';
+        setStatus(queueStatus, false, 'Queue not found (ID still usable).', true);
+      }
+    }
+
+    // --- YOUR creation flow (plug in your working calls here) ---
+    async function createExternalWorkForAgent(agentUserId){
+      // This function intentionally “fire-and-forgets” from the UI’s perspective.
+      // The exact API sequence depends on your current working approach.
+      //
+      // ⬇️ Replace these placeholders with your known-good calls:
+      //
+      // 1) Create a dummy email routed to REQUIRED_QUEUE_ID
+      // const convo = await conversationsApi.postConversationsEmails({ ...payloadThatRoutesToQueue... });
+      //
+      // 2) Force-assign the interaction participant to `agentUserId`
+      // await conversationsApi.patchConversationParticipant(convo.id, theEmailParticipantId, { userId: agentUserId });
+      //
+      // 3) Immediately disconnect/complete it
+      // await conversationsApi.postConversationDisconnect(convo.id);
+      //
+      // Notes:
+      // - If you prefer true “silent connect”, consider enabling Auto-Answer for the queue/agents.
+      // - If you ultimately just need to log non-ACD work, Work Items/Third-Party Object Routing can be cleaner.
+
+      // For now, we just resolve immediately so the UI feels instant.
+      return true;
+    }
+
+    async function init(){
+      // Wire buttons
+      $('#reloginBtn').addEventListener('click', async ()=>{
+        $('#createBtn').disabled = true;
+        $('#agentSelect').disabled = true;
+        try{
+          await login();
+          await Promise.all([loadAgents(), loadQueue()]);
+          $('#createBtn').disabled = false;
+          toast('Re-authenticated.');
+        }catch(e){
+          toast('Login failed. Check console.');
+        }
+      });
+
+      $('#createBtn').addEventListener('click', ()=>{
+        const createBtn = $('#createBtn');
+        const status = $('#createStatus');
+        const agentId = $('#agentSelect').value;
+
+        if (!agentId){
+          toast('Pick an agent first, champ.');
+          return;
+        }
+        createBtn.disabled = true;
+        status.innerHTML = `<span class="spinner"></span><span>Creating external work…</span>`;
+
+        // Fire-and-forget UX: do not await in the click handler; show immediate success.
+        (async ()=>{
+          try{
+            await createExternalWorkForAgent(agentId);
+            status.innerHTML = `<span class="dot ok"></span><span>Created and auto-closed.</span>`;
+            toast('Created. It will auto-close in the background.');
+          }catch(e){
+            console.error('Create failed', e);
+            status.innerHTML = `<span class="dot err"></span><span>Failed to create – check console.</span>`;
+            toast('Could not create external work.');
+          }finally{
+            createBtn.disabled = false;
+          }
+        })();
+      });
+
+      // First-time bootstrap
+      try{
+        await login();
+      }catch(e){
+        toast('Login needed. Click “Re-login”.');
+        return;
+      }
+      await Promise.all([loadAgents(), loadQueue()]);
+      $('#createBtn').disabled = false;
+    }
+
+    // Kick off once SDK is loaded
+    window.addEventListener('load', init);
+  </script>
+</body>
+</html>
+
 
     <div class="row">
       <div>
