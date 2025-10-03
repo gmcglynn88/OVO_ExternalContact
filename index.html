@@ -1,287 +1,111 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>External Work Creation</title>
-  <style>
-    :root { --primary-color:#63AB8F; --primary-hover:#4D8F77; --border-color:#e0e0e0; --shadow:0 2px 8px rgba(0,0,0,.1); }
-    body{font-family:'Aptos','Segoe UI',system-ui,-apple-system,sans-serif;background:#f9f9f9;margin:0;padding:2rem;max-width:600px;margin-inline:auto;color:#333;line-height:1.6}
-    .card{background:#fff;border-radius:8px;box-shadow:var(--shadow);padding:2rem;margin-top:2rem}
-    .logo-container{text-align:center;margin-bottom:1.5rem}
-    #logo{max-width:180px;height:auto;margin-bottom:1rem}
-    h1{color:var(--primary-color);font-weight:600;margin-bottom:1.5rem;font-size:1.8rem;text-align:center}
-    label{display:block;margin:1.2rem 0 .4rem;font-weight:500;color:#555}
-    select,input{width:100%;padding:.8rem;border:1px solid var(--border-color);border-radius:4px;font:inherit;transition:border .2s}
-    select:focus,input:focus{outline:none;border-color:var(--primary-color);box-shadow:0 0 0 2px rgba(99,171,143,.2)}
-    button{width:100%;background:var(--primary-color);color:#fff;border:none;padding:.9rem;font-size:1rem;font-weight:500;border-radius:4px;cursor:pointer;transition:background .2s;margin-top:2rem;text-transform:uppercase;letter-spacing:.5px}
-    button:hover{background:var(--primary-hover)}
-    button:disabled{opacity:.6;cursor:not-allowed}
-    #statusMessage{margin-top:1.5rem;padding:1rem;border-radius:4px;background:#f5f5f5;display:none}
-    .success{color:#2e7d32;border-left:4px solid #4caf50;padding-left:1rem}
-    .error{color:#c62828;border-left:4px solid #f44336;padding-left:1rem}
-    .loader{display:none;text-align:center;margin:1rem 0}
-    .spinner{border:3px solid rgba(0,0,0,.1);border-top:3px solid var(--primary-color);border-radius:50%;width:20px;height:20px;animation:spin 1s linear infinite;display:inline-block;vertical-align:middle;margin-right:8px}
-    @keyframes spin{to{transform:rotate(360deg)}}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="logo-container">
-      <img id="logo" src="https://raw.githubusercontent.com/gmcglynn88/ExternalWorkCreation/main/Consultinglogo.png" alt="Company Logo">
-    </div>
-    <h1>External Work Creation</h1>
+// ======= CORE API FLOW =======
+async function createInteraction() {
+  const queueId = document.getElementById('queueSelect').value;
+  const userId  = document.getElementById('userSelect').value;
+  const externalReference = (document.getElementById('externalReference').value || '').trim();
 
-    <label for="queueSelect">Select Queue:</label>
-    <select id="queueSelect" disabled></select>
+  if (!queueId || !userId) return showStatusMessage('Please select both a queue and a user', 'error');
 
-    <label for="userSelect">Select User:</label>
-    <select id="userSelect" disabled></select>
+  clearStatus();
+  showLoader(true);
+  setButtonDisabled(true);
 
-    <label for="externalReference">External Reference:</label>
-    <input type="text" id="externalReference" placeholder="Enter external reference (optional)">
-
-    <div class="loader" id="loader"><div class="spinner"></div><span>Creating interaction...</span></div>
-    <button id="createInteractionBtn" disabled>Create Proxy Interaction</button>
-    <div id="statusMessage"></div>
-  </div>
-
-  <script>
-    // ======= CONFIG =======
-    const CLIENT_ID = 'f2a0fa16-33cb-480b-a4ef-4766812dfb81';
-    const REDIRECT_URI = 'https://gmcglynn88.github.io/OVO_ExternalContact/';
-    const LOGIN_BASE = 'https://login.euw2.pure.cloud';
-    const API_BASE   = 'https://api.euw2.pure.cloud';
-
-    const whitelistedUserIds = [
-      'fa677b42-4aff-45af-b7e7-749418788b88',
-      '206a7f52-4f89-446f-afbf-ac879147a7ad',
-      '14ecd5fc-30f9-4214-809f-93771752bfb6',
-      '79148e85-0da8-4f3e-9cdf-1ce4d832f5a4',
-      '4ec6fd9a-e335-4d96-9504-05a1fbaa46a9',
-      '207b29f5-8895-429c-b3bb-4879b41d8718',
-      '4cd8cbf4-a8a1-4b49-9769-825d1cfc9e08',
-      '6e917925-2cff-49b5-a730-55db79445280',
-      'fed76596-cfa5-4fda-bb15-49985065480e',
-      '660c4154-ba9b-4e84-90ec-c9c9b409ac41'
-    ];
-    const REQUIRED_QUEUE_ID = '4a6f26c7-2b69-4c34-99e2-e156230ec2bd';
-
-    // ======= OAUTH (Implicit) =======
-    function getExactRedirectUri(){
-      return REDIRECT_URI;
-    }
-    function buildAuthorizeUrl() {
-      const redirectUri = getExactRedirectUri();
-      const u = new URL(`${LOGIN_BASE}/oauth/authorize`);
-      u.searchParams.set('client_id', CLIENT_ID);
-      u.searchParams.set('response_type', 'token');
-      u.searchParams.set('redirect_uri', redirectUri);
-      return u.toString();
-    }
-    let accessToken = null;
-
-    document.addEventListener('DOMContentLoaded', () => {
-      const params = new URLSearchParams(window.location.hash.slice(1));
-      accessToken = params.get('access_token');
-      if (!accessToken) {
-        window.location.replace(buildAuthorizeUrl());
-        return;
-      }
-      initializeApp();
+  try {
+    // 1) Create email interaction
+    console.log('Creating email interaction...');
+    const interaction = await apiFetch(`${API_BASE}/api/v2/conversations/emails`, {
+      method: 'POST',
+      body: JSON.stringify({
+        queueId,
+        provider: 'QualityForm',
+        direction: 'INBOUND',
+        fromName: 'External Work',
+        subject: externalReference ? `External Work - ${externalReference}` : 'External Work Item',
+        attributes: externalReference ? { 'External Link': externalReference } : {}
+      })
     });
+    const conversationId = interaction.id;
+    console.log('Created interaction:', conversationId);
 
-    // ======= APP INIT =======
-    async function initializeApp() {
+    // Wait for conversation to fully initialize
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // 2) Get conversation details to find participants
+    console.log('Getting conversation details...');
+    const details = await apiFetch(`${API_BASE}/api/v2/conversations/${conversationId}`);
+    console.log('Participants:', details.participants);
+
+    // 3) Find the ACD participant and assign to user
+    const acdParticipant = (details.participants || []).find(p => 
+      p.purpose && p.purpose.toLowerCase() === 'acd'
+    );
+
+    if (acdParticipant) {
+      console.log('Found ACD participant:', acdParticipant.id);
+      
+      // First, let's try the direct assignment endpoint
       try {
-        await populateQueue();
-        await populateUsers();
-        toggleCreateButton();
-        document.getElementById('createInteractionBtn').addEventListener('click', createInteraction);
-        ['queueSelect','userSelect'].forEach(id => {
-          document.getElementById(id).addEventListener('change', toggleCreateButton);
-        });
-      } catch (e) {
-        console.error('Init failed', e);
-        showStatusMessage(`Initialisation error: ${escapeHTML(e.message)}`, 'error');
-      }
-    }
-
-    // ======= UI POPULATORS =======
-    async function populateQueue() {
-      const sel = document.getElementById('queueSelect');
-      sel.innerHTML = '';
-      try {
-        const q = await apiFetch(`${API_BASE}/api/v2/routing/queues/${REQUIRED_QUEUE_ID}`);
-        const opt = new Option(q?.name || REQUIRED_QUEUE_ID, REQUIRED_QUEUE_ID);
-        sel.add(opt);
-        sel.disabled = false;
-      } catch (e) {
-        console.error('Queue lookup failed', e);
-        const opt = new Option('Queue not found (ID usable)', REQUIRED_QUEUE_ID);
-        sel.add(opt);
-        sel.disabled = false;
-      }
-    }
-
-    async function populateUsers() {
-      const sel = document.getElementById('userSelect');
-      sel.innerHTML = '';
-      try {
-        // Fetch each whitelisted user by ID
-        const results = await Promise.allSettled(
-          whitelistedUserIds.map(id => apiFetch(`${API_BASE}/api/v2/users/${id}`))
-        );
-        const users = results
-          .filter(r => r.status === 'fulfilled' && r.value && !r.value.deleted)
-          .map(r => r.value)
-          .sort((a,b)=> (a.name || '').localeCompare(b.name || ''));
-
-        if (!users.length) {
-          sel.add(new Option('No whitelisted users found', ''));
-          sel.disabled = true;
-          return;
-        }
-
-        users.forEach(u => sel.add(new Option(u.name || u.id, u.id)));
-        sel.disabled = false;
-      } catch (e) {
-        console.error('User lookup failed', e);
-        sel.add(new Option('Failed to load users', ''));
-        sel.disabled = true;
-      }
-    }
-
-    function toggleCreateButton() {
-      const btn = document.getElementById('createInteractionBtn');
-      btn.disabled = !(document.getElementById('queueSelect').value && document.getElementById('userSelect').value);
-    }
-
-    // ======= CORE API FLOW =======
-    async function createInteraction() {
-      const queueId = document.getElementById('queueSelect').value;
-      const userId  = document.getElementById('userSelect').value;
-      const externalReference = (document.getElementById('externalReference').value || '').trim();
-
-      if (!queueId || !userId) return showStatusMessage('Please select both a queue and a user', 'error');
-
-      clearStatus();
-      showLoader(true);
-      setButtonDisabled(true);
-
-      try {
-        // 1) Create email interaction
-        console.log('Creating email interaction...');
-        const interaction = await apiFetch(`${API_BASE}/api/v2/conversations/emails`, {
+        console.log('Trying direct assignment...');
+        await apiFetch(`${API_BASE}/api/v2/conversations/${conversationId}/assign`, {
           method: 'POST',
-          body: JSON.stringify({
-            queueId,
-            provider: 'QualityForm',
-            direction: 'INBOUND',
-            fromName: 'External Work',
-            subject: externalReference ? `External Work - ${externalReference}` : 'External Work Item',
-            attributes: externalReference ? { 'External Link': externalReference } : {}
+          body: JSON.stringify({ userId })
+        });
+        console.log('Direct assignment successful');
+      } catch (assignErr) {
+        console.warn('Direct assignment failed, trying participant patch:', assignErr);
+        
+        // Fallback to participant patch
+        await apiFetch(`${API_BASE}/api/v2/conversations/${conversationId}/participants/${acdParticipant.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ 
+            userId: userId,
+            purpose: 'agent'
           })
         });
-        const conversationId = interaction.id;
-        console.log('Created interaction:', conversationId);
-
-        // Wait for conversation to initialize
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        // 2) Get conversation details to find participants
-        console.log('Getting conversation details...');
-        const details = await apiFetch(`${API_BASE}/api/v2/conversations/${conversationId}`);
-        console.log('Participants:', details.participants);
-
-        // 3) Find the ACD participant and assign to user
-        const acdParticipant = (details.participants || []).find(p => 
-          p.purpose && p.purpose.toLowerCase() === 'acd'
-        );
-
-        if (acdParticipant) {
-          console.log('Found ACD participant:', acdParticipant.id);
-          try {
-            await apiFetch(`${API_BASE}/api/v2/conversations/${conversationId}/participants/${acdParticipant.id}`, {
-              method: 'PATCH',
-              body: JSON.stringify({ 
-                userId: userId,
-                purpose: 'agent'
-              })
-            });
-            console.log('Successfully assigned participant to user');
-          } catch (assignErr) {
-            console.error('Failed to assign participant:', assignErr);
-            throw new Error('Could not assign interaction to selected user');
-          }
-        } else {
-          console.warn('No ACD participant found');
-          throw new Error('Could not find participant to assign');
-        }
-
-        // 4) Wait for assignment to process
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        // 5) Disconnect the conversation
-        console.log('Disconnecting conversation...');
-        await apiFetch(`${API_BASE}/api/v2/conversations/emails/${conversationId}`, {
-          method:'PATCH',
-          body: JSON.stringify({ state: 'disconnected' })
-        });
-        console.log('Conversation disconnected');
-
-        const queueName = getSelectedText('queueSelect');
-        const userName  = getSelectedText('userSelect');
-        showStatusMessage(
-          `Interaction for <b>${escapeHTML(userName)}</b> in <b>${escapeHTML(queueName)}</b> created and stored in <b>Performance &gt; Workspace &gt; Interactions</b>.`,
-          'success'
-        );
-      } catch (e) {
-        console.error('Create interaction failed:', e);
-        showStatusMessage(`Error creating interaction: ${escapeHTML(e.message)}`, 'error');
-      } finally {
-        showLoader(false);
-        setButtonDisabled(false);
-      }
-    }
-
-    // ======= FETCH HELPERS =======
-    async function apiFetch(url, options = {}) {
-      const res = await fetch(url, {
-        ...options,
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          ...(options.headers || {})
-        }
-      });
-
-      if (res.status === 401) {
-        window.location.replace(buildAuthorizeUrl());
-        throw new Error('Unauthorised (401) — redirecting to sign in.');
+        console.log('Participant patch successful');
       }
 
-      const text = await res.text();
-      if (!res.ok) {
-        let details = '';
-        try { const body = JSON.parse(text || '{}'); details = body.message || body.error || text; } catch { details = text; }
-        throw new Error(`${res.status} ${res.statusText}${details ? ` — ${details}` : ''}`);
+      // 4) Wait longer for assignment to fully process and commit
+      console.log('Waiting for assignment to commit...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // 5) Verify the assignment worked by getting updated conversation details
+      console.log('Verifying assignment...');
+      const updatedDetails = await apiFetch(`${API_BASE}/api/v2/conversations/${conversationId}`);
+      const assignedParticipant = (updatedDetails.participants || []).find(p => 
+        p.user && p.user.id === userId
+      );
+      
+      if (assignedParticipant) {
+        console.log('Assignment verified - user found in participants:', assignedParticipant.user.name);
+      } else {
+        console.warn('Assignment verification failed - user not found in participants');
       }
-      return text ? JSON.parse(text) : null;
+
+    } else {
+      console.warn('No ACD participant found');
+      throw new Error('Could not find participant to assign');
     }
 
-    // ======= UI HELPERS =======
-    function getSelectedText(selectId){
-      const sel = document.getElementById(selectId);
-      return sel.options[sel.selectedIndex]?.text || '';
-    }
-    function setButtonDisabled(disabled) {
-      document.getElementById('createInteractionBtn').disabled = disabled;
-    }
-    function showLoader(show){ document.getElementById('loader').style.display = show ? 'block' : 'none'; }
-    function clearStatus(){ const el = document.getElementById('statusMessage'); el.style.display='none'; el.textContent=''; el.className=''; }
-    function showStatusMessage(msg, type='success'){ const el = document.getElementById('statusMessage'); el.style.display='block'; el.className = type; el.innerHTML = msg; }
-    function escapeHTML(str){ return (str || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-  </script>
-</body>
-</html>
+    // 6) Disconnect the conversation
+    console.log('Disconnecting conversation...');
+    await apiFetch(`${API_BASE}/api/v2/conversations/emails/${conversationId}`, {
+      method:'PATCH',
+      body: JSON.stringify({ state: 'disconnected' })
+    });
+    console.log('Conversation disconnected');
+
+    const queueName = getSelectedText('queueSelect');
+    const userName  = getSelectedText('userSelect');
+    showStatusMessage(
+      `Interaction for <b>${escapeHTML(userName)}</b> in <b>${escapeHTML(queueName)}</b> created and stored in <b>Performance &gt; Workspace &gt; Interactions</b>.`,
+      'success'
+    );
+  } catch (e) {
+    console.error('Create interaction failed:', e);
+    showStatusMessage(`Error creating interaction: ${escapeHTML(e.message)}`, 'error');
+  } finally {
+    showLoader(false);
+    setButtonDisabled(false);
+  }
+}
