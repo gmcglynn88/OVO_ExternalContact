@@ -1,104 +1,318 @@
-:root{
-  --primary:#63AB8F;
-  --primary-hover:#4D8F77;
-  --border:#e0e0e0;
-  --shadow:0 2px 12px rgba(0,0,0,.08);
-}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>External Work Creation</title>
+  <style>
+    :root{
+      --primary:#63AB8F;
+      --primary-hover:#4D8F77;
+      --border:#e0e0e0;
+      --shadow:0 2px 12px rgba(0,0,0,.08);
+    }
 
-/* Page background */
-html{background:#f7f7f7}
+    /* Page background */
+    html{background:#f7f7f7}
 
-/* Make the whole page look like a centred card */
-body{
-  font-family:'Aptos','Segoe UI',system-ui,-apple-system,Arial,sans-serif;
-  color:#333;
-  line-height:1.6;
-  background:#fff;
-  max-width:640px;
-  margin:2rem auto;
-  padding:2rem;
-  border-radius:12px;
-  box-shadow:var(--shadow);
-}
+    /* Make the whole page look like a centred card */
+    body{
+      font-family:'Aptos','Segoe UI',system-ui,-apple-system,Arial,sans-serif;
+      color:#333;
+      line-height:1.6;
+      background:#fff;
+      max-width:640px;
+      margin:2rem auto;
+      padding:2rem;
+      border-radius:12px;
+      box-shadow:var(--shadow);
+    }
 
-/* Logo area */
-#logo-container{ text-align:center; margin-bottom:1rem; }
-#logo{ max-width:180px; height:auto; }
+    /* Logo area */
+    #logo-container{ text-align:center; margin-bottom:1rem; }
+    #logo{ max-width:180px; height:auto; }
 
-/* Title */
-h1{
-  color:var(--primary);
-  font-size:1.8rem;
-  font-weight:600;
-  text-align:center;
-  margin:0 0 1.25rem;
-}
+    /* Title */
+    h1{
+      color:var(--primary);
+      font-size:1.8rem;
+      font-weight:600;
+      text-align:center;
+      margin:0 0 1.25rem;
+    }
 
-/* Labels & controls */
-label{
-  display:block;
-  margin:1rem 0 .4rem;
-  font-weight:600;
-  color:#555;
-}
+    /* Labels & controls */
+    label{
+      display:block;
+      margin:1rem 0 .4rem;
+      font-weight:600;
+      color:#555;
+    }
 
-select,
-input,
-button{
-  width:100%;
-  max-width:none; /* let the card width control things */
-  padding:.85rem;
-  border-radius:8px;
-  font:inherit;
-}
+    select,
+    input,
+    button{
+      width:100%;
+      max-width:none;
+      padding:.85rem;
+      border-radius:8px;
+      font:inherit;
+    }
 
-/* Inputs */
-select,
-input{
-  border:1px solid var(--border);
-  transition:border-color .2s, box-shadow .2s;
-  background:#fff;
-}
+    /* Inputs */
+    select,
+    input{
+      border:1px solid var(--border);
+      transition:border-color .2s, box-shadow .2s;
+      background:#fff;
+    }
 
-select:focus,
-input:focus{
-  outline:none;
-  border-color:var(--primary);
-  box-shadow:0 0 0 3px rgba(99,171,143,.18);
-}
+    select:focus,
+    input:focus{
+      outline:none;
+      border-color:var(--primary);
+      box-shadow:0 0 0 3px rgba(99,171,143,.18);
+    }
 
-/* Button */
-button{
-  margin-top:1.25rem;
-  background:var(--primary);
-  color:#fff;
-  border:none;
-  font-weight:600;
-  letter-spacing:.3px;
-  cursor:pointer;
-  text-transform:uppercase;
-  transition:background .2s, transform .02s;
-}
+    /* Button */
+    button{
+      margin-top:1.25rem;
+      background:var(--primary);
+      color:#fff;
+      border:none;
+      font-weight:600;
+      letter-spacing:.3px;
+      cursor:pointer;
+      text-transform:uppercase;
+      transition:background .2s, transform .02s;
+    }
 
-button:hover{ background:var(--primary-hover); }
-button:active{ transform:translateY(1px); }
-button:disabled{ opacity:.6; cursor:not-allowed; }
+    button:hover{ background:var(--primary-hover); }
+    button:active{ transform:translateY(1px); }
+    button:disabled{ opacity:.6; cursor:not-allowed; }
 
-/* Status message */
-#statusMessage{
-  margin-top:1rem;
-  padding:1rem 1.1rem;
-  background:#f5f7f6;
-  border-left:4px solid var(--primary);
-  border-radius:8px;
-  color:#2d593f;
-}
+    /* Status message */
+    #statusMessage{
+      margin-top:1rem;
+      padding:1rem 1.1rem;
+      background:#f5f7f6;
+      border-left:4px solid var(--primary);
+      border-radius:8px;
+      color:#2d593f;
+    }
 
-/* Hide empty status (shows only when JS sets text) */
-#statusMessage:empty{ display:none; }
+    /* Hide empty status */
+    #statusMessage:empty{ display:none; }
 
-/* Small screens */
-@media (max-width:480px){
-  body{ margin:1rem; padding:1.25rem; }
-  h1{ font-size:1.5rem; }
-}
+    /* Small screens */
+    @media (max-width:480px){
+      body{ margin:1rem; padding:1.25rem; }
+      h1{ font-size:1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <div id="logo-container">
+    <img id="logo" src="https://raw.githubusercontent.com/gmcglynn88/ExternalWorkCreation/main/Consultinglogo.png" alt="Company Logo">
+  </div>
+
+  <h1>External Work Creation</h1>
+
+  <label for="queueSelect">Select Queue:</label>
+  <select id="queueSelect"></select>
+
+  <label for="userSelect">Select User:</label>
+  <select id="userSelect"></select>
+
+  <label for="externalReference">External Reference:</label>
+  <input type="text" id="externalReference" placeholder="Enter external reference (optional)">
+
+  <button id="createInteractionBtn">Create Proxy Interaction</button>
+
+  <div id="statusMessage"></div>
+
+  <script>
+    const clientId = 'f2a0fa16-33cb-480b-a4ef-4766812dfb81';
+    const redirectUri = 'https://gmcglynn88.github.io/OVO_ExternalContact/';
+    const responseType = 'token';
+    const oauthUrl = `https://api.euw2.pure.cloud/oauth/authorize?client_id=${clientId}&response_type=${responseType}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+
+    const AGENT_IDS = [
+      'fa677b42-4aff-45af-b7e7-749418788b88',
+      '206a7f52-4f89-446f-afbf-ac879147a7ad',
+      '14ecd5fc-30f9-4214-809f-93771752bfb6',
+      '79148e85-0da8-4f3e-9cdf-1ce4d832f5a4',
+      '4ec6fd9a-e335-4d96-9504-05a1fbaa46a9',
+      '207b29f5-8895-429c-b3bb-4879b41d8718',
+      '4cd8cbf4-a8a1-4b49-9769-825d1cfc9e08',
+      '6e917925-2cff-49b5-a730-55db79445280',
+      'fed76596-cfa5-4fda-bb15-49985065480e',
+      '660c4154-ba9b-4e84-90ec-c9c9b409ac41'
+    ];
+    const TARGET_QUEUE_ID = '4a6f26c7-2b69-4c34-99e2-e156230ec2bd';
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+      const token = params.get('access_token');
+
+      if (!token) {
+        window.location.href = oauthUrl;
+      } else {
+        initializeApp(token);
+      }
+    });
+
+    function initializeApp(token) {
+      populateDropdowns(token);
+
+      document.getElementById('createInteractionBtn').addEventListener('click', () => {
+        createInteraction(token);
+      });
+    }
+
+    async function populateDropdowns(token) {
+      try {
+        const queueSelect = document.getElementById('queueSelect');
+        const targetQueue = await fetchSpecificQueue(TARGET_QUEUE_ID, token);
+        
+        if (targetQueue) {
+          const option = document.createElement('option');
+          option.value = targetQueue.id;
+          option.text = targetQueue.name;
+          queueSelect.add(option);
+        } else {
+          console.warn(`Target queue with ID ${TARGET_QUEUE_ID} not found`);
+          document.getElementById('statusMessage').innerText = `Error: Queue not found`;
+        }
+
+        const userSelect = document.getElementById('userSelect');
+        const agents = await fetchSpecificUsers(AGENT_IDS, token);
+        
+        agents.forEach(user => {
+          const option = document.createElement('option');
+          option.value = user.id;
+          option.text = user.name;
+          userSelect.add(option);
+        });
+
+      } catch (error) {
+        console.error('Error populating dropdowns:', error);
+        document.getElementById('statusMessage').innerText = `Error loading data: ${error.message}`;
+      }
+    }
+
+    async function fetchSpecificQueue(queueId, token) {
+      try {
+        const response = await fetch(`https://api.euw2.pure.cloud/api/v2/routing/queues/${queueId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.ok) {
+          return await response.json();
+        } else {
+          console.warn(`Queue with ID ${queueId} not found: ${response.status}`);
+          return null;
+        }
+      } catch (error) {
+        console.error(`Error fetching queue ${queueId}:`, error);
+        return null;
+      }
+    }
+
+    async function fetchSpecificUsers(userIds, token) {
+      const users = [];
+      
+      for (const userId of userIds) {
+        try {
+          const response = await fetch(`https://api.euw2.pure.cloud/api/v2/users/${userId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+
+          if (response.ok) {
+            const user = await response.json();
+            users.push(user);
+          } else {
+            console.warn(`User with ID ${userId} not found or error fetching: ${response.status}`);
+          }
+        } catch (error) {
+          console.error(`Error fetching user ${userId}:`, error);
+        }
+      }
+      
+      return users;
+    }
+
+    async function createInteraction(token) {
+      const queueId = document.getElementById('queueSelect').value;
+      const userId = document.getElementById('userSelect').value;
+      const externalReference = document.getElementById('externalReference').value;
+
+      try {
+        const interactionResponse = await fetch('https://api.euw2.pure.cloud/api/v2/conversations/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            queueId: queueId,
+            provider: 'QualityForm',
+            direction: 'INBOUND',
+            fromName: 'External Work',
+            attributes: { 'External Link': externalReference }
+          })
+        });
+
+        if (!interactionResponse.ok) {
+          throw new Error(`Error creating interaction: ${interactionResponse.status} ${interactionResponse.statusText}`);
+        }
+
+        const interaction = await interactionResponse.json();
+        const conversationId = interaction.id;
+
+        const conversationDetailsResponse = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!conversationDetailsResponse.ok) {
+          throw new Error(`Error fetching conversation details: ${conversationDetailsResponse.status} ${conversationDetailsResponse.statusText}`);
+        }
+        const conversationDetails = await conversationDetailsResponse.json();
+        const participantId = conversationDetails.participants[1].id;
+
+        const assignResponse = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}/participants/${participantId}/replace`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ userId: userId })
+        });
+
+        if (!assignResponse.ok) {
+          throw new Error(`Error assigning user: ${assignResponse.status} ${assignResponse.statusText}`);
+        }
+
+        const disconnectResponse = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ state: 'disconnected' })
+        });
+
+        if (!disconnectResponse.ok) {
+          throw new Error(`Error disconnecting conversation: ${disconnectResponse.status} ${disconnectResponse.statusText}`);
+        }
+
+        document.getElementById('statusMessage').innerText = 'Interaction created and assigned successfully!';
+
+      } catch (error) {
+        console.error('Error during interaction creation:', error);
+        document.getElementById('statusMessage').innerText = `Error: ${error.message}`;
+      }
+    }
+  </script>
+</body>
+</html>
