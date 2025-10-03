@@ -1,12 +1,12 @@
-<!doctype html>
-<html lang="en-GB">
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>External Work Creation</title>
   <style>
     :root { --primary-color:#63AB8F; --primary-hover:#4D8F77; --border-color:#e0e0e0; --shadow:0 2px 8px rgba(0,0,0,.1); }
-    body{font-family:'Aptos','Segoe UI',system-ui,-apple-system,sans-serif;background:#f9f9f9;margin:0;padding:2rem;max-width:650px;margin-inline:auto;color:#333;line-height:1.6}
+    body{font-family:'Aptos','Segoe UI',system-ui,-apple-system,sans-serif;background:#f9f9f9;margin:0;padding:2rem;max-width:600px;margin-inline:auto;color:#333;line-height:1.6}
     .card{background:#fff;border-radius:8px;box-shadow:var(--shadow);padding:2rem;margin-top:2rem}
     .logo-container{text-align:center;margin-bottom:1.5rem}
     #logo{max-width:180px;height:auto;margin-bottom:1rem}
@@ -14,7 +14,6 @@
     label{display:block;margin:1.2rem 0 .4rem;font-weight:500;color:#555}
     select,input{width:100%;padding:.8rem;border:1px solid var(--border-color);border-radius:4px;font:inherit;transition:border .2s}
     select:focus,input:focus{outline:none;border-color:var(--primary-color);box-shadow:0 0 0 2px rgba(99,171,143,.2)}
-    .row{display:grid;grid-template-columns:1fr;gap:12px}
     button{width:100%;background:var(--primary-color);color:#fff;border:none;padding:.9rem;font-size:1rem;font-weight:500;border-radius:4px;cursor:pointer;transition:background .2s;margin-top:2rem;text-transform:uppercase;letter-spacing:.5px}
     button:hover{background:var(--primary-hover)}
     button:disabled{opacity:.6;cursor:not-allowed}
@@ -24,7 +23,6 @@
     .loader{display:none;text-align:center;margin:1rem 0}
     .spinner{border:3px solid rgba(0,0,0,.1);border-top:3px solid var(--primary-color);border-radius:50%;width:20px;height:20px;animation:spin 1s linear infinite;display:inline-block;vertical-align:middle;margin-right:8px}
     @keyframes spin{to{transform:rotate(360deg)}}
-    small.hint{color:#666;display:block;margin-top:.25rem}
   </style>
 </head>
 <body>
@@ -34,167 +32,186 @@
     </div>
     <h1>External Work Creation</h1>
 
-    <label for="agentSelect">Select Agent</label>
-    <select id="agentSelect" disabled>
-      <option>Loading agents…</option>
-    </select>
-    <small class="hint">Only whitelisted users appear here.</small>
+    <label for="queueSelect">Select Queue:</label>
+    <select id="queueSelect"></select>
 
-    <label for="queueName">Queue</label>
-    <input id="queueName" type="text" disabled />
+    <label for="userSelect">Select User:</label>
+    <select id="userSelect"></select>
 
-    <div class="row">
-      <button id="createBtn" disabled>Create</button>
-    </div>
+    <label for="externalReference">External Reference:</label>
+    <input type="text" id="externalReference" placeholder="Enter external reference (optional)">
 
-    <div class="loader" id="loader"><span class="spinner"></span> Processing…</div>
+    <div class="loader" id="loader"><div class="spinner"></div><span>Creating interaction...</span></div>
+    <button id="createInteractionBtn">Create Proxy Interaction</button>
     <div id="statusMessage"></div>
   </div>
 
-  <!-- 1) Load the Genesys Cloud SDK first -->
-  <script src="https://sdk-cdn.mypurecloud.com/javascript/latest/purecloud-platform-client-v2.min.js"></script>
-
-  <!-- 2) Your app logic second -->
   <script>
-    // --- Tiny UI helpers ---
-    function showStatus(msg, isError=false){
-      const box = document.getElementById("statusMessage");
-      box.style.display = msg ? "block" : "none";
-      box.textContent = msg || "";
-      box.className = isError ? "error" : "success";
+    const clientId = 'f2a0fa16-33cb-480b-a4ef-4766812dfb81';
+
+    function getExactRedirectUri(){
+      return `${location.origin}${location.pathname}`;
     }
-    function showLoader(show){ document.getElementById("loader").style.display = show ? "block" : "none"; }
 
-    (async function start(){
-      // Ensure SDK is available
-      if (!window.platformClient) {
-        showStatus('Could not load Genesys Cloud SDK. Check network/CSP.', true);
-        return;
-      }
+    const redirectUri = getExactRedirectUri();
+    const oauthUrl = `https://login.euw2.pure.cloud/oauth/authorize?client_id=${clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    let accessToken = null;
 
-      // ===== CONFIG (your values) =====
-      const CLIENT_ID    = "f2a0fa16-33cb-480b-a4ef-4766812dfb81";
-      const REDIRECT_URI = "https://gmcglynn88.github.io/OVO_ExternalContact/";
-      const ENVIRONMENT  = "euw2.pure.cloud";   // London (EUW2)
+    const whitelistedUserIds = [
+      'fa677b42-4aff-45af-b7e7-749418788b88',
+      '206a7f52-4f89-446f-afbf-ac879147a7ad',
+      '14ecd5fc-30f9-4214-809f-93771752bfb6',
+      '79148e85-0da8-4f3e-9cdf-1ce4d832f5a4',
+      '4ec6fd9a-e335-4d96-9504-05a1fbaa46a9',
+      '207b29f5-8895-429c-b3bb-4879b41d8718',
+      '4cd8cbf4-a8a1-4b49-9769-825d1cfc9e08',
+      '6e917925-2cff-49b5-a730-55db79445280',
+      'fed76596-cfa5-4fda-bb15-49985065480e',
+      '660c4154-ba9b-4e84-90ec-c9c9b409ac41'
+    ];
+    const whitelistedQueueIds = [
+      '4a6f26c7-2b69-4c34-99e2-e156230ec2bd'
+    ];
 
-      // Whitelisted users (names will be fetched)
-      const ALLOWED_USER_IDS = [
-        "fa677b42-4aff-45af-b7e7-749418788b88",
-        "206a7f52-4f89-446f-afbf-ac879147a7ad",
-        "14ecd5fc-30f9-4214-809f-93771752bfb6",
-        "79148e85-0da8-4f3e-9cdf-1ce4d832f5a4",
-        "4ec6fd9a-e335-4d96-9504-05a1fbaa46a9",
-        "207b29f5-8895-429c-b3bb-4879b41d8718",
-        "4cd8cbf4-a8a1-4b49-9769-825d1cfc9e08",
-        "6e917925-2cff-49b5-a730-55db79445280",
-        "fed76596-cfa5-4fda-bb15-49985065480e",
-        "660c4154-ba9b-4e84-90ec-c9c9b409ac41"
-      ];
+    document.addEventListener('DOMContentLoaded', () => {
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+      accessToken = params.get('access_token');
+      if (!accessToken) window.location.href = oauthUrl;
+      else initializeApp();
+    });
 
-      // Single required queue (show friendly name)
-      const REQUIRED_QUEUE_ID = "4a6f26c7-2b69-4c34-99e2-e156230ec2bd";
+    async function initializeApp() {
+      await populateDropdowns();
+      document.getElementById('createInteractionBtn').addEventListener('click', createInteraction);
+    }
 
-      // ===== INIT SDK =====
-      const client = platformClient.ApiClient.instance;
-      client.setEnvironment(ENVIRONMENT);
-
-      const usersApi         = new platformClient.UsersApi();
-      const routingApi       = new platformClient.RoutingApi();
-      const conversationsApi = new platformClient.ConversationsApi(); // used by your existing flow
-
-      // ===== Login =====
+    async function populateDropdowns() {
       try {
-        await client.loginImplicitGrant(CLIENT_ID, REDIRECT_URI);
+        // Use the same approach as working version - fetch all then filter
+        const queues = await fetchAllPages('https://api.euw2.pure.cloud/api/v2/routing/queues');
+        const users  = await fetchAllPages('https://api.euw2.pure.cloud/api/v2/users');
+
+        const queueSelect = document.getElementById('queueSelect');
+        const filteredQueues = queues.filter(q => whitelistedQueueIds.includes(q.id));
+        filteredQueues.forEach(q => queueSelect.add(new Option(q.name, q.id)));
+
+        const userSelect = document.getElementById('userSelect');
+        const filteredUsers = users.filter(u => whitelistedUserIds.includes(u.id));
+        filteredUsers.forEach(u => userSelect.add(new Option(u.name, u.id)));
+
+        if (!filteredQueues.length) { queueSelect.add(new Option('No allowed queues','')); queueSelect.disabled = true; }
+        if (!filteredUsers.length) { userSelect.add(new Option('No allowed users','')); userSelect.disabled = true; }
+        toggleCreateButton();
       } catch (e) {
         console.error(e);
-        showStatus("Login failed. Double-check OAuth settings.", true);
-        return;
+        showStatusMessage(`Error loading data: ${e.message}`, 'error');
       }
+    }
 
-      // ===== Bootstrap UI (agents + queue) =====
-      await loadAgents();
-      await loadQueue();
-      document.getElementById("createBtn").disabled = false;
+    function toggleCreateButton() {
+      const btn = document.getElementById('createInteractionBtn');
+      btn.disabled = !(document.getElementById('queueSelect').value && document.getElementById('userSelect').value);
+    }
 
-      // ===== Wire Create (fire-and-forget, like your original) =====
-      document.getElementById("createBtn").addEventListener("click", () => {
-        const agentId = document.getElementById("agentSelect").value;
-        if (!agentId) { showStatus("Please select an agent", true); return; }
+    async function fetchAllPages(url) {
+      let all = [], pageNumber = 1, more = true;
+      while (more) {
+        const r = await fetch(`${url}?pageNumber=${pageNumber}&pageSize=25`, { headers:{ Authorization:`Bearer ${accessToken}` }});
+        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+        const data = await r.json();
+        all = all.concat(data.entities || []);
+        more = data.pageCount > pageNumber; pageNumber++;
+      }
+      return all;
+    }
 
-        showLoader(true);
-        showStatus("", false); // clear
+    async function createInteraction() {
+      const queueId = document.getElementById('queueSelect').value;
+      const userId  = document.getElementById('userSelect').value;
+      const externalReference = (document.getElementById('externalReference').value || '').trim();
 
-        // Fire-and-forget: don't block the UI on completion/acceptance
-        createExternalWork(agentId)
-          .then(() => showStatus("External work created and auto-closed.", false))
-          .catch(err => {
-            console.error(err);
-            showStatus("Failed to create external work.", true);
+      if (!queueId || !userId) return showStatusMessage('Please select both a queue and a user', 'error');
+
+      showLoader(true); showStatusMessage('', 'success');
+
+      try {
+        // Step 1: Create interaction (EXACT SAME as working version)
+        const interactionRes = await fetch('https://api.euw2.pure.cloud/api/v2/conversations/emails', {
+          method:'POST',
+          headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
+          body: JSON.stringify({
+            queueId, provider:'QualityForm', direction:'INBOUND', fromName:'External Work',
+            attributes: { 'External Link': externalReference }
           })
-          .finally(() => showLoader(false));
-      });
+        });
+        if (!interactionRes.ok) throw new Error(`Error creating interaction: ${interactionRes.status} ${interactionRes.statusText}`);
+        const interaction = await interactionRes.json();
+        const conversationId = interaction.id;
 
-      // ===== Helpers =====
-      async function loadAgents(){
-        const select = document.getElementById("agentSelect");
-        select.innerHTML = '<option>Loading…</option>';
-        try{
-          const results = await Promise.allSettled(ALLOWED_USER_IDS.map(id => usersApi.getUser(id)));
-          const users = results
-            .filter(r => r.status === "fulfilled" && r.value && !r.value.deleted)
-            .map(r => r.value)
-            .sort((a,b)=> (a.name||"").localeCompare(b.name||""));
-          if (!users.length){
-            select.innerHTML = '<option disabled>No whitelisted users found</option>';
-            return;
+        // Step 2: Try assignment (EXACT SAME as working version)
+        const assignRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/assign`, {
+          method:'POST',
+          headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
+          body: JSON.stringify({ userId })
+        });
+        
+        // Step 3: If assignment fails, fallback to participant patch (EXACT SAME as working version)
+        if (!assignRes.ok) {
+          console.warn('Manual assign failed; falling back to participant PATCH');
+          const detailsRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`, { headers:{ Authorization:`Bearer ${accessToken}` }});
+          if (detailsRes.ok) {
+            const details = await detailsRes.json();
+            const p = (details.participants||[]).find(x => ['acd','agent','user'].includes(x.purpose)) || (details.participants||[])[0];
+            if (p) await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/participants/${p.id}`, {
+              method:'PATCH', headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
+              body: JSON.stringify({ userId })
+            });
           }
-          select.innerHTML = "";
-          for (const u of users){
-            const opt = document.createElement("option");
-            opt.value = u.id;
-            opt.textContent = u.name || u.id;
-            select.appendChild(opt);
-          }
-          select.disabled = false;
-        }catch(err){
-          console.error(err);
-          select.innerHTML = '<option disabled>Failed to load agents</option>';
-          showStatus("Failed to load agents.", true);
         }
-      }
 
-      async function loadQueue(){
-        try{
-          const q = await routingApi.getRoutingQueue(REQUIRED_QUEUE_ID);
-          document.getElementById("queueName").value = q?.name || REQUIRED_QUEUE_ID;
-        }catch(err){
-          console.error(err);
-          document.getElementById("queueName").value = "Queue not found";
+        // Step 4: Create external contact (EXACT SAME as working version)
+        const firstName = 'External';
+        const lastName  = externalReference || 'Work Item';
+        const contactRes = await fetch('https://api.euw2.pure.cloud/api/v2/externalcontacts/contacts', {
+          method:'POST',
+          headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
+          body: JSON.stringify({ firstName, lastName, addresses:[], phoneNumbers:[], emailAddresses:[], notes: externalReference ? [`Ref: ${externalReference}`] : [] })
+        });
+
+        let externalContactId = null;
+        if (contactRes.ok) {
+          const contact = await contactRes.json();
+          externalContactId = contact.id;
+          await fetch(`https://api.euw2.pure.cloud/api/v2/externalcontacts/conversations/${conversationId}`, {
+            method:'PUT',
+            headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
+            body: JSON.stringify({ externalContactId })
+          });
+        } else {
+          console.warn('External contact creation failed');
         }
-      }
 
-      // ===== Your original behaviour (drop your working code here) =====
-      async function createExternalWork(agentUserId){
-        // 🔻🔻🔻 PASTE YOUR EXISTING CALLS IN THIS BLOCK 🔻🔻🔻
-        //
-        // 1) Create the dummy email interaction that routes to REQUIRED_QUEUE_ID
-        //    e.g. const convo = await conversationsApi.postConversationsEmails({ ... your payload ... });
-        //
-        // 2) Force-assign the participant to agentUserId
-        //    e.g. await conversationsApi.patchConversationParticipant(convo.id, participantId, { userId: agentUserId });
-        //
-        // 3) Immediately disconnect / complete
-        //    e.g. await conversationsApi.postConversationDisconnect(convo.id);
-        //
-        // NOTE: Keep exactly what worked in Dublin; only the region changed (to EUW2).
-        // The UI will not wait for agent acceptance — it just kicks this off.
+        // Step 5: Disconnect the conversation (EXACT SAME as working version)
+        await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}`, {
+          method:'PATCH',
+          headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
+          body: JSON.stringify({ state:'disconnected' })
+        });
 
-        // Temporary no-op so the button works while you paste your code:
-        await new Promise(r => setTimeout(r, 300));
-        return true;
-        // 🔺🔺🔺 END PASTE AREA 🔺🔺🔺
+        const queueName = document.getElementById('queueSelect').options[document.getElementById('queueSelect').selectedIndex].text;
+        const userName = document.getElementById('userSelect').options[document.getElementById('userSelect').selectedIndex].text;
+        showStatusMessage(`Interaction for <b>${userName}</b> in <b>${queueName}</b> created and stored in <b>Performance &gt; Workspace &gt; Interactions</b>.`);
+      } catch (e) {
+        console.error(e);
+        showStatusMessage(`Error creating interaction: ${e.message}`, 'error');
+      } finally {
+        showLoader(false);
       }
-    })();
+    }
+
+    function showLoader(show){ document.getElementById('loader').style.display = show ? 'block' : 'none'; }
+    function showStatusMessage(msg, type='success'){ const el = document.getElementById('statusMessage'); el.style.display='block'; el.className = type; el.innerHTML = msg; }
   </script>
 </body>
 </html>
