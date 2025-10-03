@@ -84,12 +84,24 @@
       letter-spacing:.3px;
       cursor:pointer;
       text-transform:uppercase;
-      transition:background .2s, transform .02s;
+      transition:background .2s, transform .02s, opacity .2s;
     }
 
     button:hover{ background:var(--primary-hover); }
     button:active{ transform:translateY(1px); }
     button:disabled{ opacity:.6; cursor:not-allowed; }
+
+    /* Loader */
+    .loader{display:none; align-items:center; gap:.5rem; margin-top:1rem;}
+    .loader.show{display:flex;}
+    .spinner{
+      border:3px solid rgba(0,0,0,.1);
+      border-top:3px solid var(--primary);
+      border-radius:50%;
+      width:20px;height:20px;
+      animation:spin 1s linear infinite;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
 
     /* Status message */
     #statusMessage{
@@ -100,9 +112,17 @@
       border-radius:8px;
       color:#2d593f;
     }
-
-    /* Hide empty status */
     #statusMessage:empty{ display:none; }
+    #statusMessage.error{
+      background:#fff5f5;
+      border-left-color:#f44336;
+      color:#b71c1c;
+    }
+    #statusMessage.success{
+      background:#f3fff6;
+      border-left-color:#43a047;
+      color:#1b5e20;
+    }
 
     /* Small screens */
     @media (max-width:480px){
@@ -127,16 +147,26 @@
   <label for="externalReference">External Reference:</label>
   <input type="text" id="externalReference" placeholder="Enter external reference (optional)">
 
+  <div class="loader" id="loader"><div class="spinner"></div><span>Creating interaction…</span></div>
   <button id="createInteractionBtn">Create Proxy Interaction</button>
 
   <div id="statusMessage"></div>
 
   <script>
+    // ===== OAuth config =====
     const clientId = 'f2a0fa16-33cb-480b-a4ef-4766812dfb81';
-    const redirectUri = 'https://gmcglynn88.github.io/OVO_ExternalContact/';
+    const redirectUri = 'https://gmcglynn88.github.io/OVO_ExternalContact/'; // Must match OAuth app EXACTLY (incl. trailing slash)
     const responseType = 'token';
-    const oauthUrl = `https://api.euw2.pure.cloud/oauth/authorize?client_id=${clientId}&response_type=${responseType}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    const state = Math.random().toString(36).slice(2); // optional CSRF protection
 
+    // ✅ Use login.{region}.pure.cloud for OAuth
+    const oauthUrl =
+      `https://login.euw2.pure.cloud/oauth/authorize?client_id=${clientId}` +
+      `&response_type=${responseType}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&state=${state}`;
+
+    // ===== App config =====
     const AGENT_IDS = [
       'fa677b42-4aff-45af-b7e7-749418788b88',
       '206a7f52-4f89-446f-afbf-ac879147a7ad',
@@ -151,10 +181,28 @@
     ];
     const TARGET_QUEUE_ID = '4a6f26c7-2b69-4c34-99e2-e156230ec2bd';
 
+    // ===== Helpers =====
+    const $ = (id) => document.getElementById(id);
+    function setLoading(isLoading){
+      const btn = $('createInteractionBtn');
+      const loader = $('loader');
+      btn.disabled = isLoading;
+      loader.classList.toggle('show', isLoading);
+    }
+    function showMessage(kind, text){
+      const el = $('statusMessage');
+      el.className = kind; // 'success' | 'error' or ''
+      el.textContent = text || '';
+    }
+
+    // ===== Boot =====
     document.addEventListener('DOMContentLoaded', () => {
       const hash = window.location.hash.substring(1);
       const params = new URLSearchParams(hash);
       const token = params.get('access_token');
+
+      // Optional: if you added state above, you can validate it here
+      // const returnedState = params.get('state');
 
       if (!token) {
         window.location.href = oauthUrl;
@@ -165,17 +213,14 @@
 
     function initializeApp(token) {
       populateDropdowns(token);
-
-      document.getElementById('createInteractionBtn').addEventListener('click', () => {
-        createInteraction(token);
-      });
+      $('createInteractionBtn').addEventListener('click', () => createInteraction(token));
     }
 
     async function populateDropdowns(token) {
       try {
-        const queueSelect = document.getElementById('queueSelect');
+        // Fetch only the target queue
+        const queueSelect = $('queueSelect');
         const targetQueue = await fetchSpecificQueue(TARGET_QUEUE_ID, token);
-        
         if (targetQueue) {
           const option = document.createElement('option');
           option.value = targetQueue.id;
@@ -183,22 +228,21 @@
           queueSelect.add(option);
         } else {
           console.warn(`Target queue with ID ${TARGET_QUEUE_ID} not found`);
-          document.getElementById('statusMessage').innerText = `Error: Queue not found`;
+          showMessage('error', 'Error: Queue not found');
         }
 
-        const userSelect = document.getElementById('userSelect');
+        // Fetch specific agents
+        const userSelect = $('userSelect');
         const agents = await fetchSpecificUsers(AGENT_IDS, token);
-        
         agents.forEach(user => {
           const option = document.createElement('option');
           option.value = user.id;
           option.text = user.name;
           userSelect.add(option);
         });
-
       } catch (error) {
         console.error('Error populating dropdowns:', error);
-        document.getElementById('statusMessage').innerText = `Error loading data: ${error.message}`;
+        showMessage('error', `Error loading data: ${error.message}`);
       }
     }
 
@@ -207,13 +251,9 @@
         const response = await fetch(`https://api.euw2.pure.cloud/api/v2/routing/queues/${queueId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-
-        if (response.ok) {
-          return await response.json();
-        } else {
-          console.warn(`Queue with ID ${queueId} not found: ${response.status}`);
-          return null;
-        }
+        if (response.ok) return await response.json();
+        console.warn(`Queue with ID ${queueId} not found: ${response.status}`);
+        return null;
       } catch (error) {
         console.error(`Error fetching queue ${queueId}:`, error);
         return null;
@@ -222,31 +262,30 @@
 
     async function fetchSpecificUsers(userIds, token) {
       const users = [];
-      
       for (const userId of userIds) {
         try {
           const response = await fetch(`https://api.euw2.pure.cloud/api/v2/users/${userId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
-
           if (response.ok) {
-            const user = await response.json();
-            users.push(user);
+            users.push(await response.json());
           } else {
-            console.warn(`User with ID ${userId} not found or error fetching: ${response.status}`);
+            console.warn(`User ${userId} not found or error: ${response.status}`);
           }
         } catch (error) {
           console.error(`Error fetching user ${userId}:`, error);
         }
       }
-      
       return users;
     }
 
     async function createInteraction(token) {
-      const queueId = document.getElementById('queueSelect').value;
-      const userId = document.getElementById('userSelect').value;
-      const externalReference = document.getElementById('externalReference').value;
+      const queueId = $('queueSelect').value;
+      const userId = $('userSelect').value;
+      const externalReference = $('externalReference').value;
+
+      setLoading(true);
+      showMessage('', '');
 
       try {
         const interactionResponse = await fetch('https://api.euw2.pure.cloud/api/v2/conversations/emails', {
@@ -256,7 +295,7 @@
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            queueId: queueId,
+            queueId,
             provider: 'QualityForm',
             direction: 'INBOUND',
             fromName: 'External Work',
@@ -278,7 +317,12 @@
           throw new Error(`Error fetching conversation details: ${conversationDetailsResponse.status} ${conversationDetailsResponse.statusText}`);
         }
         const conversationDetails = await conversationDetailsResponse.json();
-        const participantId = conversationDetails.participants[1].id;
+
+        // Assuming the second participant is the agent leg you want to replace/assign
+        const participantId = conversationDetails.participants[1]?.id;
+        if (!participantId) {
+          throw new Error('Could not determine participant to assign.');
+        }
 
         const assignResponse = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}/participants/${participantId}/replace`, {
           method: 'POST',
@@ -286,9 +330,8 @@
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ userId: userId })
+          body: JSON.stringify({ userId })
         });
-
         if (!assignResponse.ok) {
           throw new Error(`Error assigning user: ${assignResponse.status} ${assignResponse.statusText}`);
         }
@@ -301,16 +344,16 @@
           },
           body: JSON.stringify({ state: 'disconnected' })
         });
-
         if (!disconnectResponse.ok) {
           throw new Error(`Error disconnecting conversation: ${disconnectResponse.status} ${disconnectResponse.statusText}`);
         }
 
-        document.getElementById('statusMessage').innerText = 'Interaction created and assigned successfully!';
-
+        showMessage('success', 'Interaction created and assigned successfully!');
       } catch (error) {
         console.error('Error during interaction creation:', error);
-        document.getElementById('statusMessage').innerText = `Error: ${error.message}`;
+        showMessage('error', `Error: ${error.message}`);
+      } finally {
+        setLoading(false);
       }
     }
   </script>
