@@ -51,38 +51,33 @@
     <div id="statusMessage"></div>
   </div>
 
-  <!-- App helpers FIRST (do not touch platformClient here) -->
+  <!-- 1) Load the Genesys Cloud SDK first -->
+  <script src="https://sdk-cdn.mypurecloud.com/javascript/latest/purecloud-platform-client-v2.min.js"></script>
+
+  <!-- 2) Your app logic second -->
   <script>
-    // UI helpers
+    // --- Tiny UI helpers ---
     function showStatus(msg, isError=false){
-      const box=document.getElementById("statusMessage");
-      box.style.display="block";
-      box.textContent=msg;
-      box.className=isError?"error":"success";
+      const box = document.getElementById("statusMessage");
+      box.style.display = msg ? "block" : "none";
+      box.textContent = msg || "";
+      box.className = isError ? "error" : "success";
     }
     function showLoader(show){ document.getElementById("loader").style.display = show ? "block" : "none"; }
-  </script>
 
-  <!-- Genesys Cloud SDK; start the app ONLY when this has loaded -->
-  <script
-    src="https://sdk-cdn.mypurecloud.com/javascript/latest/purecloud-platform-client-v2.min.js"
-    onload="startApp()"
-    onerror="showStatus('Could not load Genesys Cloud SDK. Check network/CSP and the script URL.', true)"
-  ></script>
-
-  <!-- Your app logic. We define startApp() which the SDK onload will call. -->
-  <script>
-    async function startApp(){
+    (async function start(){
+      // Ensure SDK is available
       if (!window.platformClient) {
-        showStatus('Genesys SDK did not initialise correctly.', true);
+        showStatus('Could not load Genesys Cloud SDK. Check network/CSP.', true);
         return;
       }
 
-      // ===== CONFIG =====
-      const CLIENT_ID   = "f2a0fa16-33cb-480b-a4ef-4766812dfb81";        // Replace with your OAuth Client ID
-      const REDIRECT_URI= "https://gmcglynn88.github.io/OVO_ExternalContact/";     // Replace with your Redirect URI
-      const ENVIRONMENT = "euw2.pure.cloud";       // London region
+      // ===== CONFIG (your values) =====
+      const CLIENT_ID    = "f2a0fa16-33cb-480b-a4ef-4766812dfb81";
+      const REDIRECT_URI = "https://gmcglynn88.github.io/OVO_ExternalContact/";
+      const ENVIRONMENT  = "euw2.pure.cloud";   // London (EUW2)
 
+      // Whitelisted users (names will be fetched)
       const ALLOWED_USER_IDS = [
         "fa677b42-4aff-45af-b7e7-749418788b88",
         "206a7f52-4f89-446f-afbf-ac879147a7ad",
@@ -95,68 +90,73 @@
         "fed76596-cfa5-4fda-bb15-49985065480e",
         "660c4154-ba9b-4e84-90ec-c9c9b409ac41"
       ];
+
+      // Single required queue (show friendly name)
       const REQUIRED_QUEUE_ID = "4a6f26c7-2b69-4c34-99e2-e156230ec2bd";
 
       // ===== INIT SDK =====
       const client = platformClient.ApiClient.instance;
       client.setEnvironment(ENVIRONMENT);
 
-      const usersApi        = new platformClient.UsersApi();
-      const routingApi      = new platformClient.RoutingApi();
-      const conversationsApi= new platformClient.ConversationsApi();
+      const usersApi         = new platformClient.UsersApi();
+      const routingApi       = new platformClient.RoutingApi();
+      const conversationsApi = new platformClient.ConversationsApi(); // used by your existing flow
 
       // ===== Login =====
       try {
         await client.loginImplicitGrant(CLIENT_ID, REDIRECT_URI);
       } catch (e) {
         console.error(e);
-        showStatus("Login failed. Verify CLIENT_ID and REDIRECT_URI.", true);
+        showStatus("Login failed. Double-check OAuth settings.", true);
         return;
       }
 
-      // ===== Bootstrap UI =====
+      // ===== Bootstrap UI (agents + queue) =====
       await loadAgents();
       await loadQueue();
-      document.getElementById("createBtn").disabled=false;
+      document.getElementById("createBtn").disabled = false;
 
-      // ===== Wire events =====
-      document.getElementById("createBtn").addEventListener("click", async ()=>{
+      // ===== Wire Create (fire-and-forget, like your original) =====
+      document.getElementById("createBtn").addEventListener("click", () => {
         const agentId = document.getElementById("agentSelect").value;
-        if(!agentId){ showStatus("Please select an agent", true); return; }
+        if (!agentId) { showStatus("Please select an agent", true); return; }
 
         showLoader(true);
         showStatus("", false); // clear
-        try{
-          await createExternalWork(agentId);
-          showStatus("External work created and auto-closed.", false);
-        }catch(err){
-          console.error(err);
-          showStatus("Failed to create external work.", true);
-        }finally{
-          showLoader(false);
-        }
+
+        // Fire-and-forget: don't block the UI on completion/acceptance
+        createExternalWork(agentId)
+          .then(() => showStatus("External work created and auto-closed.", false))
+          .catch(err => {
+            console.error(err);
+            showStatus("Failed to create external work.", true);
+          })
+          .finally(() => showLoader(false));
       });
 
-      // ===== Functions =====
+      // ===== Helpers =====
       async function loadAgents(){
         const select = document.getElementById("agentSelect");
-        select.innerHTML = "";
-        try {
+        select.innerHTML = '<option>Loading…</option>';
+        try{
           const results = await Promise.allSettled(ALLOWED_USER_IDS.map(id => usersApi.getUser(id)));
-          const users = results.filter(r => r.status === "fulfilled" && r.value && !r.value.deleted).map(r => r.value);
-          users.sort((a,b)=> (a.name||"").localeCompare(b.name||""));
+          const users = results
+            .filter(r => r.status === "fulfilled" && r.value && !r.value.deleted)
+            .map(r => r.value)
+            .sort((a,b)=> (a.name||"").localeCompare(b.name||""));
           if (!users.length){
             select.innerHTML = '<option disabled>No whitelisted users found</option>';
             return;
           }
-          users.forEach(u=>{
-            const opt=document.createElement("option");
-            opt.value=u.id;
-            opt.textContent=u.name || u.id;
+          select.innerHTML = "";
+          for (const u of users){
+            const opt = document.createElement("option");
+            opt.value = u.id;
+            opt.textContent = u.name || u.id;
             select.appendChild(opt);
-          });
-          select.disabled=false;
-        } catch (err) {
+          }
+          select.disabled = false;
+        }catch(err){
           console.error(err);
           select.innerHTML = '<option disabled>Failed to load agents</option>';
           showStatus("Failed to load agents.", true);
@@ -173,22 +173,28 @@
         }
       }
 
+      // ===== Your original behaviour (drop your working code here) =====
       async function createExternalWork(agentUserId){
-        // ⬇️ Replace with your existing, working sequence:
-        // 1) Create dummy email routed to REQUIRED_QUEUE_ID
-        // 2) Assign to agentUserId
-        // 3) Immediately disconnect/complete
+        // 🔻🔻🔻 PASTE YOUR EXISTING CALLS IN THIS BLOCK 🔻🔻🔻
+        //
+        // 1) Create the dummy email interaction that routes to REQUIRED_QUEUE_ID
+        //    e.g. const convo = await conversationsApi.postConversationsEmails({ ... your payload ... });
+        //
+        // 2) Force-assign the participant to agentUserId
+        //    e.g. await conversationsApi.patchConversationParticipant(convo.id, participantId, { userId: agentUserId });
+        //
+        // 3) Immediately disconnect / complete
+        //    e.g. await conversationsApi.postConversationDisconnect(convo.id);
+        //
+        // NOTE: Keep exactly what worked in Dublin; only the region changed (to EUW2).
+        // The UI will not wait for agent acceptance — it just kicks this off.
 
-        // Placeholder: simulate success
-        await new Promise(r => setTimeout(r, 1000));
+        // Temporary no-op so the button works while you paste your code:
+        await new Promise(r => setTimeout(r, 300));
         return true;
-
-        // Example shape (commented – fill with your payloads):
-        // const convo = await conversationsApi.postConversationsEmails({ ... });
-        // await conversationsApi.patchConversationParticipant(convo.id, participantId, { userId: agentUserId });
-        // await conversationsApi.postConversationDisconnect(convo.id);
+        // 🔺🔺🔺 END PASTE AREA 🔺🔺🔺
       }
-    }
+    })();
   </script>
 </body>
 </html>
