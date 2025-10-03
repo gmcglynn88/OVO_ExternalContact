@@ -46,29 +46,11 @@
     <div id="statusMessage"></div>
   </div>
 
-  <!-- Debug panel (temporary) -->
-  <div id="debug" style="font:12px/1.4 system-ui; background:#fff3cd; border:1px solid #ffeeba; padding:8px; margin:12px auto; max-width:600px; display:none">
-    <div><b>Queues fetched:</b> <span id="dbgQueues">0</span></div>
-    <div><b>Users fetched:</b> <span id="dbgUsers">0</span></div>
-    <div><b>Filtered queues:</b> <span id="dbgQueuesFiltered">0</span></div>
-    <div><b>Filtered users:</b> <span id="dbgUsersFiltered">0</span></div>
-  </div>
-
   <script>
     const clientId = 'f2a0fa16-33cb-480b-a4ef-4766812dfb81';
 
     function getExactRedirectUri(){
-      return `${location.origin}${location.pathname}`; // exact page URL incl. trailing slash
-    }
-
-    function setDebugCounts(counts) {
-      if (counts.q !== undefined) document.getElementById('dbgQueues').textContent = counts.q;
-      if (counts.u !== undefined) document.getElementById('dbgUsers').textContent = counts.u;
-      if (counts.qf !== undefined) document.getElementById('dbgQueuesFiltered').textContent = counts.qf;
-      if (counts.uf !== undefined) document.getElementById('dbgUsersFiltered').textContent = counts.uf;
-      
-      // Show debug panel when this function is called
-      document.getElementById('debug').style.display = 'block';
+      return `${location.origin}${location.pathname}`;
     }
 
     function addPlaceholder(selectElement, text) {
@@ -138,9 +120,6 @@
           fetchWhitelistedUsers()
         ]);
 
-        // Update debug panel
-        setDebugCounts({ q: queues.length, u: users.length, qf: queues.length, uf: users.length });
-
         // Repopulate dropdowns with fetched data
         queueSelect.innerHTML = '';
         userSelect.innerHTML = '';
@@ -167,7 +146,6 @@
       } catch (e) {
         console.error('populateDropdowns failed', e);
         showStatusMessage(`Error loading data: ${escapeHTML(e.message)}`, 'error');
-        document.getElementById('debug').style.display = 'block';
       } finally {
         showLoader(false);
       }
@@ -212,17 +190,6 @@
       btn.disabled = !(qs.value && us.value && !qs.disabled && !us.disabled);
     }
 
-    async function fetchAllPages(baseUrl) {
-      let all = [], pageNumber = 1, pageCount = 1;
-      while (pageNumber <= pageCount) {
-        const data = await apiFetch(`${baseUrl}?pageNumber=${pageNumber}&pageSize=100`);
-        all = all.concat(data.entities || []);
-        pageCount = Number(data.pageCount || pageCount || 1);
-        pageNumber++;
-      }
-      return all;
-    }
-
     async function apiFetch(url, options = {}) {
       try {
         const res = await fetch(url, {
@@ -263,7 +230,7 @@
       setButtonDisabled(true);
 
       try {
-        // Create the email interaction
+        // Create the email interaction - SIMPLIFIED like working version
         const interaction = await apiFetch('https://api.euw2.pure.cloud/api/v2/conversations/emails', {
           method:'POST',
           body: JSON.stringify({
@@ -271,66 +238,34 @@
             provider:'QualityForm', 
             direction:'INBOUND', 
             fromName:'External Work',
-            subject: externalReference ? `External Work - ${externalReference}` : 'External Work Item',
             attributes: { 
-              'External Link': externalReference,
-              'externalWorkItem': 'true'
+              'External Link': externalReference
             }
           })
         });
         const conversationId = interaction.id;
-        console.log('Created interaction:', conversationId);
 
-        // Wait a moment for the conversation to fully initialize
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        let assignmentSuccessful = false;
-
-        // Try assign endpoint first - this is the preferred method
+        // Try assign endpoint first - EXACTLY like working version
         try {
-          console.log('Attempting direct assignment to user:', userId);
           await apiFetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/assign`, {
             method:'POST',
             body: JSON.stringify({ userId })
           });
-          assignmentSuccessful = true;
-          console.log('Direct assignment successful');
         } catch (assignErr) {
-          console.warn('Direct assign failed; falling back to participant PATCH', assignErr);
-          
-          // Get conversation details to find participants
+          console.warn('Manual assign failed; falling back to participant PATCH');
+          // Get conversation details to find participants - SIMPLIFIED like working version
           const details = await apiFetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`);
-          console.log('Conversation details:', details);
-          
-          // Find the ACD participant (the one in the queue)
-          const acdParticipant = (details.participants || []).find(x => 
-            x.purpose && x.purpose.toLowerCase() === 'acd'
-          );
-          
-          if (acdParticipant) {
-            console.log('Found ACD participant:', acdParticipant.id);
-            await apiFetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/participants/${acdParticipant.id}`, {
+          // Use the same participant selection logic as working version
+          const p = (details.participants||[]).find(x => ['acd','agent','user'].includes(x.purpose)) || (details.participants||[])[0];
+          if (p) {
+            await apiFetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/participants/${p.id}`, {
               method:'PATCH',
-              body: JSON.stringify({ 
-                userId: userId,
-                purpose: 'agent'
-              })
+              body: JSON.stringify({ userId })
             });
-            assignmentSuccessful = true;
-            console.log('Participant patch successful');
-          } else {
-            console.warn('No ACD participant found to patch. Participants:', details.participants);
           }
         }
 
-        if (!assignmentSuccessful) {
-          throw new Error('Could not assign interaction to user. Please try again.');
-        }
-
-        // Wait a bit for assignment to process before disconnecting
-        await new Promise(resolve => setTimeout(resolve, 1500));
-
-        // External contact (best-effort)
+        // External contact (best-effort) - SIMPLIFIED like working version
         try {
           const contact = await apiFetch('https://api.euw2.pure.cloud/api/v2/externalcontacts/contacts', {
             method:'POST',
@@ -340,7 +275,7 @@
               addresses:[], 
               phoneNumbers:[], 
               emailAddresses:[],
-              notes: externalReference ? [`External Reference: ${externalReference}`] : ['External Work Item']
+              notes: externalReference ? [`Ref: ${externalReference}`] : []
             })
           });
 
@@ -348,13 +283,11 @@
             method:'PUT',
             body: JSON.stringify({ externalContactId: contact.id })
           });
-          console.log('External contact linked');
         } catch (e) {
           console.warn('External contact creation/link failed', e);
         }
 
         // Disconnect the email to store it
-        console.log('Disconnecting interaction');
         await apiFetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}`, {
           method:'PATCH',
           body: JSON.stringify({ state:'disconnected' })
