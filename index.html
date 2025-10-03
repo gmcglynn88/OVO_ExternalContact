@@ -184,12 +184,16 @@
       showStatusMessage('', 'success');
 
       try {
-        // Step 1: Create interaction (EXACT SAME as working version)
+        // Step 1: Create interaction
         const interactionRes = await fetch('https://api.euw2.pure.cloud/api/v2/conversations/emails', {
           method:'POST',
           headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
           body: JSON.stringify({
-            queueId, provider:'QualityForm', direction:'INBOUND', fromName:'External Work',
+            queueId, 
+            provider:'QualityForm', 
+            direction:'INBOUND', 
+            fromName:'External Work',
+            subject: externalReference ? `External Work - ${externalReference}` : 'External Work Item',
             attributes: { 'External Link': externalReference }
           })
         });
@@ -199,7 +203,7 @@
 
         console.log('Created interaction:', conversationId);
 
-        // Step 2: Try assignment with GENERAL conversation endpoint (EXACT SAME as working version)
+        // Step 2: Try assignment with GENERAL conversation endpoint
         const assignRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/assign`, {
           method:'POST',
           headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
@@ -208,7 +212,7 @@
         
         console.log('Assignment response status:', assignRes.status);
         
-        // Step 3: If assignment fails, fallback to participant patch with GENERAL conversation endpoint (EXACT SAME as working version)
+        // Step 3: If assignment fails, fallback to participant patch with GENERAL conversation endpoint
         if (!assignRes.ok) {
           console.warn('Manual assign failed; falling back to participant PATCH');
           const detailsRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`, { 
@@ -239,29 +243,7 @@
         console.log('Waiting for assignment to complete...');
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        // Step 5: Create external contact (EXACT SAME as working version)
-        const firstName = 'External';
-        const lastName  = externalReference || 'Work Item';
-        const contactRes = await fetch('https://api.euw2.pure.cloud/api/v2/externalcontacts/contacts', {
-          method:'POST',
-          headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
-          body: JSON.stringify({ firstName, lastName, addresses:[], phoneNumbers:[], emailAddresses:[], notes: externalReference ? [`Ref: ${externalReference}`] : [] })
-        });
-
-        let externalContactId = null;
-        if (contactRes.ok) {
-          const contact = await contactRes.json();
-          externalContactId = contact.id;
-          await fetch(`https://api.euw2.pure.cloud/api/v2/externalcontacts/conversations/${conversationId}`, {
-            method:'PUT',
-            headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
-            body: JSON.stringify({ externalContactId })
-          });
-        } else {
-          console.warn('External contact creation failed');
-        }
-
-        // Step 6: Disconnect the conversation (EXACT SAME as working version)
+        // Step 5: Disconnect the conversation
         await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}`, {
           method:'PATCH',
           headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
