@@ -14,7 +14,7 @@
     label{display:block;margin:1.2rem 0 .4rem;font-weight:500;color:#555}
     select,input{width:100%;padding:.8rem;border:1px solid var(--border-color);border-radius:4px;font:inherit;transition:border .2s}
     select:focus,input:focus{outline:none;border-color:var(--primary-color);box-shadow:0 0 0 2px rgba(99,171,143,.2)}
-    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .row{display:grid;grid-template-columns:1fr;gap:12px}
     button{width:100%;background:var(--primary-color);color:#fff;border:none;padding:.9rem;font-size:1rem;font-weight:500;border-radius:4px;cursor:pointer;transition:background .2s;margin-top:2rem;text-transform:uppercase;letter-spacing:.5px}
     button:hover{background:var(--primary-hover)}
     button:disabled{opacity:.6;cursor:not-allowed}
@@ -38,142 +38,157 @@
     <select id="agentSelect" disabled>
       <option>Loading agents…</option>
     </select>
+    <small class="hint">Only whitelisted users appear here.</small>
 
     <label for="queueName">Queue</label>
     <input id="queueName" type="text" disabled />
 
     <div class="row">
       <button id="createBtn" disabled>Create</button>
-      <button id="reloginBtn" type="button">Re-Login</button>
     </div>
 
     <div class="loader" id="loader"><span class="spinner"></span> Processing…</div>
     <div id="statusMessage"></div>
   </div>
 
-  <!-- Genesys Cloud SDK FIRST -->
-  <script src="https://sdk-cdn.mypurecloud.com/javascript/latest/purecloud-platform-client-v2.min.js"></script>
-
-  <!-- Your app code AFTER -->
+  <!-- App helpers FIRST (do not touch platformClient here) -->
   <script>
-    // ===== CONFIG =====
-    const CLIENT_ID = "YOUR_CLIENT_ID";         // Replace with your OAuth Client ID
-    const REDIRECT_URI = "YOUR_REDIRECT_URI";   // Replace with your redirect URI
-    const ENVIRONMENT = "euw2.pure.cloud";      // London region
-
-    const ALLOWED_USER_IDS = [
-      "fa677b42-4aff-45af-b7e7-749418788b88",
-      "206a7f52-4f89-446f-afbf-ac879147a7ad",
-      "14ecd5fc-30f9-4214-809f-93771752bfb6",
-      "79148e85-0da8-4f3e-9cdf-1ce4d832f5a4",
-      "4ec6fd9a-e335-4d96-9504-05a1fbaa46a9",
-      "207b29f5-8895-429c-b3bb-4879b41d8718",
-      "4cd8cbf4-a8a1-4b49-9769-825d1cfc9e08",
-      "6e917925-2cff-49b5-a730-55db79445280",
-      "fed76596-cfa5-4fda-bb15-49985065480e",
-      "660c4154-ba9b-4e84-90ec-c9c9b409ac41"
-    ];
-
-    const REQUIRED_QUEUE_ID = "4a6f26c7-2b69-4c34-99e2-e156230ec2bd";
-
-    // ===== INIT =====
-    const client = platformClient.ApiClient.instance;
-    client.setEnvironment(ENVIRONMENT);
-    const usersApi = new platformClient.UsersApi();
-    const routingApi = new platformClient.RoutingApi();
-    const conversationsApi = new platformClient.ConversationsApi();
-
-    async function login() {
-      try {
-        await client.loginImplicitGrant(CLIENT_ID, REDIRECT_URI);
-      } catch (err) {
-        showStatus("Login failed. Check console.", true);
-        console.error(err);
-      }
-    }
-
-    async function loadAgents() {
-      const select = document.getElementById("agentSelect");
-      select.innerHTML = "";
-      try {
-        const results = await Promise.allSettled(ALLOWED_USER_IDS.map(id => usersApi.getUser(id)));
-        const users = results.filter(r => r.status === "fulfilled").map(r => r.value);
-        users.sort((a,b)=> (a.name||"").localeCompare(b.name||""));
-
-        users.forEach(u=>{
-          const opt=document.createElement("option");
-          opt.value=u.id;
-          opt.textContent=u.name || u.id;
-          select.appendChild(opt);
-        });
-        select.disabled=false;
-      } catch (err) {
-        showStatus("Failed to load agents", true);
-        console.error(err);
-      }
-    }
-
-    async function loadQueue() {
-      try {
-        const q = await routingApi.getRoutingQueue(REQUIRED_QUEUE_ID);
-        document.getElementById("queueName").value = q.name;
-      } catch (err) {
-        document.getElementById("queueName").value = "Queue not found";
-        console.error(err);
-      }
-    }
-
-    async function createExternalWork(agentId) {
-      // 🔧 Replace this pseudocode with your working flow:
-      // 1. Create dummy email (to REQUIRED_QUEUE_ID)
-      // 2. Assign to agentId
-      // 3. Auto-close
-
-      console.log("Would create external work for agent:", agentId);
-      await new Promise(res => setTimeout(res, 1500));
-      return true;
-    }
-
+    // UI helpers
     function showStatus(msg, isError=false){
       const box=document.getElementById("statusMessage");
       box.style.display="block";
       box.textContent=msg;
       box.className=isError?"error":"success";
     }
+    function showLoader(show){ document.getElementById("loader").style.display = show ? "block" : "none"; }
+  </script>
 
-    // ===== EVENTS =====
-    document.getElementById("createBtn").addEventListener("click", async ()=>{
-      const agentId=document.getElementById("agentSelect").value;
-      if(!agentId){showStatus("Please select an agent",true);return;}
+  <!-- Genesys Cloud SDK; start the app ONLY when this has loaded -->
+  <script
+    src="https://sdk-cdn.mypurecloud.com/javascript/latest/purecloud-platform-client-v2.min.js"
+    onload="startApp()"
+    onerror="showStatus('Could not load Genesys Cloud SDK. Check network/CSP and the script URL.', true)"
+  ></script>
 
-      document.getElementById("loader").style.display="block";
-      showStatus("",false);
-
-      try{
-        await createExternalWork(agentId);
-        showStatus("External work created and auto-closed.",false);
-      }catch(e){
-        showStatus("Failed to create external work.",true);
-        console.error(e);
-      }finally{
-        document.getElementById("loader").style.display="none";
+  <!-- Your app logic. We define startApp() which the SDK onload will call. -->
+  <script>
+    async function startApp(){
+      if (!window.platformClient) {
+        showStatus('Genesys SDK did not initialise correctly.', true);
+        return;
       }
-    });
 
-    document.getElementById("reloginBtn").addEventListener("click", async ()=>{
-      await login();
+      // ===== CONFIG =====
+      const CLIENT_ID   = "YOUR_CLIENT_ID";        // Replace with your OAuth Client ID
+      const REDIRECT_URI= "YOUR_REDIRECT_URI";     // Replace with your Redirect URI
+      const ENVIRONMENT = "euw2.pure.cloud";       // London region
+
+      const ALLOWED_USER_IDS = [
+        "fa677b42-4aff-45af-b7e7-749418788b88",
+        "206a7f52-4f89-446f-afbf-ac879147a7ad",
+        "14ecd5fc-30f9-4214-809f-93771752bfb6",
+        "79148e85-0da8-4f3e-9cdf-1ce4d832f5a4",
+        "4ec6fd9a-e335-4d96-9504-05a1fbaa46a9",
+        "207b29f5-8895-429c-b3bb-4879b41d8718",
+        "4cd8cbf4-a8a1-4b49-9769-825d1cfc9e08",
+        "6e917925-2cff-49b5-a730-55db79445280",
+        "fed76596-cfa5-4fda-bb15-49985065480e",
+        "660c4154-ba9b-4e84-90ec-c9c9b409ac41"
+      ];
+      const REQUIRED_QUEUE_ID = "4a6f26c7-2b69-4c34-99e2-e156230ec2bd";
+
+      // ===== INIT SDK =====
+      const client = platformClient.ApiClient.instance;
+      client.setEnvironment(ENVIRONMENT);
+
+      const usersApi        = new platformClient.UsersApi();
+      const routingApi      = new platformClient.RoutingApi();
+      const conversationsApi= new platformClient.ConversationsApi();
+
+      // ===== Login =====
+      try {
+        await client.loginImplicitGrant(CLIENT_ID, REDIRECT_URI);
+      } catch (e) {
+        console.error(e);
+        showStatus("Login failed. Verify CLIENT_ID and REDIRECT_URI.", true);
+        return;
+      }
+
+      // ===== Bootstrap UI =====
       await loadAgents();
       await loadQueue();
       document.getElementById("createBtn").disabled=false;
-    });
 
-    // ===== BOOTSTRAP =====
-    (async function init(){
-      await login();
-      await loadAgents();
-      await loadQueue();
-      document.getElementById("createBtn").disabled=false;
-    })();
+      // ===== Wire events =====
+      document.getElementById("createBtn").addEventListener("click", async ()=>{
+        const agentId = document.getElementById("agentSelect").value;
+        if(!agentId){ showStatus("Please select an agent", true); return; }
+
+        showLoader(true);
+        showStatus("", false); // clear
+        try{
+          await createExternalWork(agentId);
+          showStatus("External work created and auto-closed.", false);
+        }catch(err){
+          console.error(err);
+          showStatus("Failed to create external work.", true);
+        }finally{
+          showLoader(false);
+        }
+      });
+
+      // ===== Functions =====
+      async function loadAgents(){
+        const select = document.getElementById("agentSelect");
+        select.innerHTML = "";
+        try {
+          const results = await Promise.allSettled(ALLOWED_USER_IDS.map(id => usersApi.getUser(id)));
+          const users = results.filter(r => r.status === "fulfilled" && r.value && !r.value.deleted).map(r => r.value);
+          users.sort((a,b)=> (a.name||"").localeCompare(b.name||""));
+          if (!users.length){
+            select.innerHTML = '<option disabled>No whitelisted users found</option>';
+            return;
+          }
+          users.forEach(u=>{
+            const opt=document.createElement("option");
+            opt.value=u.id;
+            opt.textContent=u.name || u.id;
+            select.appendChild(opt);
+          });
+          select.disabled=false;
+        } catch (err) {
+          console.error(err);
+          select.innerHTML = '<option disabled>Failed to load agents</option>';
+          showStatus("Failed to load agents.", true);
+        }
+      }
+
+      async function loadQueue(){
+        try{
+          const q = await routingApi.getRoutingQueue(REQUIRED_QUEUE_ID);
+          document.getElementById("queueName").value = q?.name || REQUIRED_QUEUE_ID;
+        }catch(err){
+          console.error(err);
+          document.getElementById("queueName").value = "Queue not found";
+        }
+      }
+
+      async function createExternalWork(agentUserId){
+        // ⬇️ Replace with your existing, working sequence:
+        // 1) Create dummy email routed to REQUIRED_QUEUE_ID
+        // 2) Assign to agentUserId
+        // 3) Immediately disconnect/complete
+
+        // Placeholder: simulate success
+        await new Promise(r => setTimeout(r, 1000));
+        return true;
+
+        // Example shape (commented – fill with your payloads):
+        // const convo = await conversationsApi.postConversationsEmails({ ... });
+        // await conversationsApi.patchConversationParticipant(convo.id, participantId, { userId: agentUserId });
+        // await conversationsApi.postConversationDisconnect(convo.id);
+      }
+    }
   </script>
 </body>
 </html>
