@@ -55,6 +55,7 @@
     const oauthUrl = `https://login.euw2.pure.cloud/oauth/authorize?client_id=${clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}`;
     let accessToken = null;
 
+    const ENFORCE_WHITELIST = true; // set to false to show ALL users/queues for debugging
     const whitelistedUserIds = [
       'fa677b42-4aff-45af-b7e7-749418788b88',
       '206a7f52-4f89-446f-afbf-ac879147a7ad',
@@ -94,18 +95,47 @@
 
     async function populateDropdowns() {
       try {
-        const queues = await fetchAllPages('https://api.euw2.pure.cloud/api/v2/routing/queues');
-        const users  = await fetchAllPages('https://api.euw2.pure.cloud/api/v2/users');
+        const [queues, users] = await Promise.all([
+          fetchAllPages('https://api.euw2.pure.cloud/api/v2/routing/queues'),
+          fetchAllPages('https://api.euw2.pure.cloud/api/v2/users')
+        ]);
 
         const queueSelect = document.getElementById('queueSelect');
-        const filteredQueues = queues.filter(q => whitelistedQueueIds.includes(q.id));
-        filteredQueues.forEach(q => queueSelect.add(new Option(q.name, q.id)));
+        const userSelect  = document.getElementById('userSelect');
+        addPlaceholder(queueSelect, 'Select a queue');
+        addPlaceholder(userSelect,  'Select a user');
 
-        const userSelect = document.getElementById('userSelect');
-        const filteredUsers = users.filter(u => whitelistedUserIds.includes(u.id));
-        filteredUsers.forEach(u => userSelect.add(new Option(u.name, u.id)));
+        const filteredQueues = ENFORCE_WHITELIST ? queues.filter(q => whitelistedQueueIds.includes(q.id)) : queues;
+        const filteredUsers  = ENFORCE_WHITELIST ? users.filter(u => whitelistedUserIds.includes(u.id)) : users;
 
-        if (!filteredQueues.length) { queueSelect.add(new Option('No allowed queues','')); queueSelect.disabled = true; }
+        // Populate queues
+        if (filteredQueues.length) {
+          filteredQueues.forEach(q => queueSelect.add(new Option(`${q.name}`, q.id)));
+        }
+
+        // Populate users
+        if (filteredUsers.length) {
+          filteredUsers
+            .sort((a,b) => a.name.localeCompare(b.name))
+            .forEach(u => userSelect.add(new Option(u.name, u.id)));
+        }
+
+        // Helpful diagnostics
+        if (!filteredQueues.length) {
+          console.warn(`No queues after filtering. Total queues: ${queues.length}. Whitelist:`, whitelistedQueueIds);
+          showStatusMessage('No allowed queues based on the current whitelist. Check the console for details.', 'error');
+          queueSelect.disabled = true;
+        }
+        if (!filteredUsers.length) {
+          console.warn(`No users after filtering. Total users: ${users.length}. Whitelist:`, whitelistedUserIds);
+          showStatusMessage('No allowed users based on the current whitelist. Check the console for details.', 'error');
+          userSelect.disabled = true;
+        }
+      } catch (e) {
+        console.error(e);
+        showStatusMessage(`Error loading data: ${e.message}. Ensure the OAuth token has scopes: users:view and routing:queue:view.`, 'error');
+      }
+    }
         if (!filteredUsers.length) { userSelect.add(new Option('No allowed users','')); userSelect.disabled = true; }
       } catch (e) {
         console.error(e);
@@ -115,13 +145,21 @@
 
     function toggleCreateButton() {
       const btn = document.getElementById('createInteractionBtn');
-      btn.disabled = !(document.getElementById('queueSelect').value && document.getElementById('userSelect').value);
+      const qs = document.getElementById('queueSelect');
+      const us = document.getElementById('userSelect');
+      btn.disabled = !(qs.value && us.value && !qs.disabled && !us.disabled);
     }
 
     async function fetchAllPages(baseUrl) {
       let all = [], pageNumber = 1, pageCount = 1;
       while (pageNumber <= pageCount) {
-        const data = await apiFetch(`${baseUrl}?pageNumber=${pageNumber}&pageSize=25`);
+        const data = await apiFetch(`${baseUrl}?pageNumber=${pageNumber}&pageSize=100`);
+        all = all.concat(data.entities || []);
+        pageCount = Number(data.pageCount || pageCount || 1);
+        pageNumber++;
+      }
+      return all;
+    }?pageNumber=${pageNumber}&pageSize=25`);
         all = all.concat(data.entities || []);
         pageCount = Number(data.pageCount || pageCount || 1);
         pageNumber++;
@@ -153,6 +191,12 @@
       }
       if (res.status === 204) return null;
       return res.json();
+    }
+
+    function addPlaceholder(selectEl, text){
+      const opt = new Option(text, '');
+      opt.disabled = true; opt.selected = true; opt.hidden = true;
+      selectEl.add(opt);
     }
 
     async function createInteraction() {
