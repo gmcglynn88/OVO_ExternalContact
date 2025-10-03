@@ -263,34 +263,72 @@
       setButtonDisabled(true);
 
       try {
+        // Create the email interaction
         const interaction = await apiFetch('https://api.euw2.pure.cloud/api/v2/conversations/emails', {
           method:'POST',
           body: JSON.stringify({
-            queueId, provider:'QualityForm', direction:'INBOUND', fromName:'External Work',
-            attributes: { 'External Link': externalReference }
+            queueId, 
+            provider:'QualityForm', 
+            direction:'INBOUND', 
+            fromName:'External Work',
+            subject: externalReference ? `External Work - ${externalReference}` : 'External Work Item',
+            attributes: { 
+              'External Link': externalReference,
+              'externalWorkItem': 'true'
+            }
           })
         });
         const conversationId = interaction.id;
+        console.log('Created interaction:', conversationId);
 
-        // Try assign endpoint first
+        // Wait a moment for the conversation to fully initialize
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        let assignmentSuccessful = false;
+
+        // Try assign endpoint first - this is the preferred method
         try {
+          console.log('Attempting direct assignment to user:', userId);
           await apiFetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/assign`, {
             method:'POST',
             body: JSON.stringify({ userId })
           });
+          assignmentSuccessful = true;
+          console.log('Direct assignment successful');
         } catch (assignErr) {
-          console.warn('Manual assign failed; falling back to participant PATCH', assignErr);
+          console.warn('Direct assign failed; falling back to participant PATCH', assignErr);
+          
+          // Get conversation details to find participants
           const details = await apiFetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`);
-          const p = (details.participants || []).find(x => ['agent','user','acd'].includes((x.purpose || '').toLowerCase()));
-          if (p) {
-            await apiFetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/participants/${p.id}`, {
+          console.log('Conversation details:', details);
+          
+          // Find the ACD participant (the one in the queue)
+          const acdParticipant = (details.participants || []).find(x => 
+            x.purpose && x.purpose.toLowerCase() === 'acd'
+          );
+          
+          if (acdParticipant) {
+            console.log('Found ACD participant:', acdParticipant.id);
+            await apiFetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/participants/${acdParticipant.id}`, {
               method:'PATCH',
-              body: JSON.stringify({ userId })
+              body: JSON.stringify({ 
+                userId: userId,
+                purpose: 'agent'
+              })
             });
+            assignmentSuccessful = true;
+            console.log('Participant patch successful');
           } else {
-            console.warn('No suitable participant found to patch.');
+            console.warn('No ACD participant found to patch. Participants:', details.participants);
           }
         }
+
+        if (!assignmentSuccessful) {
+          throw new Error('Could not assign interaction to user. Please try again.');
+        }
+
+        // Wait a bit for assignment to process before disconnecting
+        await new Promise(resolve => setTimeout(resolve, 1500));
 
         // External contact (best-effort)
         try {
@@ -299,8 +337,10 @@
             body: JSON.stringify({
               firstName: 'External',
               lastName: externalReference || 'Work Item',
-              addresses:[], phoneNumbers:[], emailAddresses:[],
-              notes: externalReference ? [`Ref: ${externalReference}`] : []
+              addresses:[], 
+              phoneNumbers:[], 
+              emailAddresses:[],
+              notes: externalReference ? [`External Reference: ${externalReference}`] : ['External Work Item']
             })
           });
 
@@ -308,11 +348,13 @@
             method:'PUT',
             body: JSON.stringify({ externalContactId: contact.id })
           });
+          console.log('External contact linked');
         } catch (e) {
           console.warn('External contact creation/link failed', e);
         }
 
         // Disconnect the email to store it
+        console.log('Disconnecting interaction');
         await apiFetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}`, {
           method:'PATCH',
           body: JSON.stringify({ state:'disconnected' })
@@ -321,8 +363,9 @@
         const queueName = getSelectedText('queueSelect');
         const userName  = getSelectedText('userSelect');
         showStatusMessage(`Interaction for <b>${escapeHTML(userName)}</b> in <b>${escapeHTML(queueName)}</b> created and stored in <b>Performance &gt; Workspace &gt; Interactions</b>.`);
+        
       } catch (e) {
-        console.error(e);
+        console.error('Create interaction failed:', e);
         showStatusMessage(`Error creating interaction: ${escapeHTML(e.message)}`, 'error');
       } finally {
         showLoader(false);
