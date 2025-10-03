@@ -48,8 +48,10 @@
 
   <!-- Debug panel (temporary) -->
   <div id="debug" style="font:12px/1.4 system-ui; background:#fff3cd; border:1px solid #ffeeba; padding:8px; margin:12px auto; max-width:600px; display:none">
-    <div><b>Queues:</b> <span id="dbgQueues">0</span></div>
-    <div><b>Users:</b> <span id="dbgUsers">0</span></div>
+    <div><b>Queues fetched:</b> <span id="dbgQueues">0</span></div>
+    <div><b>Users fetched:</b> <span id="dbgUsers">0</span></div>
+    <div><b>Filtered queues:</b> <span id="dbgQueuesFiltered">0</span></div>
+    <div><b>Filtered users:</b> <span id="dbgUsersFiltered">0</span></div>
   </div>
 
   <script>
@@ -79,9 +81,6 @@
     const redirectUri = getExactRedirectUri();
     const oauthUrl = `https://login.euw2.pure.cloud/oauth/authorize?client_id=${clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}`;
     let accessToken = null;
-
-    // DEBUG: set to true to only show whitelisted; false shows ALL entities you can view
-    const ENFORCE_WHITELIST = true;
 
     const whitelistedUserIds = [
       'fa677b42-4aff-45af-b7e7-749418788b88',
@@ -121,53 +120,89 @@
     }
 
     async function populateDropdowns() {
-  try {
-    const [queues, users] = await Promise.all([
-      fetchAllPages('https://api.euw2.pure.cloud/api/v2/routing/queues'),
-      fetchAllPages('https://api.euw2.pure.cloud/api/v2/users')
-    ]);
+      try {
+        showLoader(true);
+        
+        // Clear dropdowns and show loading state
+        const queueSelect = document.getElementById('queueSelect');
+        const userSelect = document.getElementById('userSelect');
+        
+        queueSelect.innerHTML = '';
+        userSelect.innerHTML = '';
+        addPlaceholder(queueSelect, "Loading queues...");
+        addPlaceholder(userSelect, "Loading users...");
 
-    // Update debug panel
-    setDebugCounts({ q: queues.length, u: users.length });
+        // Only fetch whitelisted items directly
+        const [queues, users] = await Promise.all([
+          fetchWhitelistedQueues(),
+          fetchWhitelistedUsers()
+        ]);
 
-    const queueSelect = document.getElementById('queueSelect');
-    const userSelect  = document.getElementById('userSelect');
-    addPlaceholder(queueSelect, "Select a queue");
-    addPlaceholder(userSelect,  "Select a user");
+        // Update debug panel
+        setDebugCounts({ q: queues.length, u: users.length, qf: queues.length, uf: users.length });
 
-    const filteredQueues = ENFORCE_WHITELIST ? queues.filter(q => whitelistedQueueIds.includes(q.id)) : queues;
-    const filteredUsers  = ENFORCE_WHITELIST ? users.filter(u => whitelistedUserIds.includes(u.id)) : users;
+        // Repopulate dropdowns with fetched data
+        queueSelect.innerHTML = '';
+        userSelect.innerHTML = '';
+        
+        addPlaceholder(queueSelect, "Select a queue");
+        addPlaceholder(userSelect, "Select a user");
 
-    setDebugCounts({ qf: filteredQueues.length, uf: filteredUsers.length });
-
-    // Only show validation errors for filtered results, not total results
-    if (filteredQueues.length) {
-      filteredQueues.forEach(q => queueSelect.add(new Option(q.name, q.id)));
-    } else {
-      console.warn('No queues after filtering', { total: queues.length, whitelist: whitelistedQueueIds });
-      showStatusMessage(
-        "No whitelisted queues available. Please check your queue whitelist configuration.",
-        'error'
-      );
-      queueSelect.disabled = true;
+        if (queues.length) {
+          queues.forEach(q => queueSelect.add(new Option(q.name, q.id)));
+        } else {
+          console.warn('No queues available', { whitelist: whitelistedQueueIds });
+          showStatusMessage("No whitelisted queues available. Please check your queue whitelist configuration.", 'error');
+          queueSelect.disabled = true;
+        }
+        
+        if (users.length) {
+          users.sort((a,b) => a.name.localeCompare(b.name)).forEach(u => userSelect.add(new Option(u.name, u.id)));
+        } else {
+          console.warn('No users available', { whitelist: whitelistedUserIds });
+          showStatusMessage("No whitelisted users available. Please check your user whitelist configuration.", 'error');
+          userSelect.disabled = true;
+        }
+        
+      } catch (e) {
+        console.error('populateDropdowns failed', e);
+        showStatusMessage(`Error loading data: ${escapeHTML(e.message)}`, 'error');
+        document.getElementById('debug').style.display = 'block';
+      } finally {
+        showLoader(false);
+      }
     }
-    
-    if (filteredUsers.length) {
-      filteredUsers.sort((a,b) => a.name.localeCompare(b.name)).forEach(u => userSelect.add(new Option(u.name, u.id)));
-    } else {
-      console.warn('No users after filtering', { total: users.length, whitelist: whitelistedUserIds });
-      showStatusMessage(
-        "No whitelisted users available. Please check your user whitelist configuration.",
-        'error'
-      );
-      userSelect.disabled = true;
+
+    // Fetch specific whitelisted queues by ID
+    async function fetchWhitelistedQueues() {
+      if (!whitelistedQueueIds.length) return [];
+      
+      const queues = [];
+      for (const queueId of whitelistedQueueIds) {
+        try {
+          const queue = await apiFetch(`https://api.euw2.pure.cloud/api/v2/routing/queues/${queueId}`);
+          if (queue) queues.push(queue);
+        } catch (e) {
+          console.warn(`Failed to fetch queue ${queueId}:`, e);
+        }
+      }
+      return queues;
     }
-  } catch (e) {
-    console.error('populateDropdowns failed', e);
-    showStatusMessage(`Error loading data: ${escapeHTML(e.message)}`, 'error');
-    document.getElementById('debug').style.display = 'block';
-  }
-}
+
+    // Fetch specific whitelisted users by ID
+    async function fetchWhitelistedUsers() {
+      if (!whitelistedUserIds.length) return [];
+      
+      const users = [];
+      for (const userId of whitelistedUserIds) {
+        try {
+          const user = await apiFetch(`https://api.euw2.pure.cloud/api/v2/users/${userId}`);
+          if (user) users.push(user);
+        } catch (e) {
+          console.warn(`Failed to fetch user ${userId}:`, e);
+        }
+      }
+      return users;
     }
 
     function toggleCreateButton() {
