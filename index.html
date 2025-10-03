@@ -185,6 +185,7 @@
 
       try {
         // Step 1: Create interaction
+        console.log('Step 1: Creating email interaction...');
         const interactionRes = await fetch('https://api.euw2.pure.cloud/api/v2/conversations/emails', {
           method:'POST',
           headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
@@ -201,100 +202,104 @@
         const interaction = await interactionRes.json();
         const conversationId = interaction.id;
 
-        console.log('Created interaction:', conversationId);
+        console.log('✅ Created interaction:', conversationId);
 
-        // Step 2: Try assignment with GENERAL conversation endpoint
-        const assignRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/assign`, {
-          method:'POST',
-          headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
-          body: JSON.stringify({ userId })
-        });
-        
-        console.log('Assignment response status:', assignRes.status);
-        
-        // Step 3: If assignment fails, fallback to participant patch with more complete data
-        if (!assignRes.ok) {
-          console.warn('Manual assign failed; falling back to participant PATCH');
-          const detailsRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`, { 
-            headers:{ Authorization:`Bearer ${accessToken}` }
-          });
-          if (detailsRes.ok) {
-            const details = await detailsRes.json();
-            console.log('Participants found:', details.participants);
-            
-            // Use the exact same logic as working version
-            const p = (details.participants||[]).find(x => ['acd','agent','user'].includes(x.purpose)) || (details.participants||[])[0];
-            if (p) {
-              console.log('Patching participant:', p.id, 'with user:', userId);
-              
-              // Create a more complete patch payload
-              const patchPayload = {
-                userId: userId,
-                purpose: 'agent',
-                // Include existing participant data to avoid overwriting important fields
-                startTime: p.startTime || new Date().toISOString(),
-                participantType: p.participantType || 'external',
-                // Preserve existing attributes if they exist
-                attributes: p.attributes || {}
-              };
-              
-              console.log('Patch payload:', patchPayload);
-              
-              const patchRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/participants/${p.id}`, {
-                method:'PATCH', 
-                headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
-                body: JSON.stringify(patchPayload)
-              });
-              
-              if (!patchRes.ok) {
-                const errorText = await patchRes.text();
-                console.error('Participant patch failed:', patchRes.status, errorText);
-                throw new Error(`Failed to assign participant: ${patchRes.status}`);
-              }
-              
-              console.log('Participant patched successfully');
-            } else {
-              console.warn('No participant found to patch');
-              throw new Error('No participant found to assign');
-            }
-          }
-        } else {
-          console.log('Direct assignment successful');
-        }
+        // Wait for conversation to initialize
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
-        // Step 4: Wait for assignment to process
-        console.log('Waiting for assignment to complete...');
-        await new Promise(resolve => setTimeout(resolve, 3000));
-
-        // Step 5: Verify assignment by getting updated conversation details
-        console.log('Verifying assignment...');
-        const verifyRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`, { 
+        // Step 2: Get conversation details to understand the structure
+        console.log('Step 2: Getting conversation details...');
+        const detailsRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`, { 
           headers:{ Authorization:`Bearer ${accessToken}` }
         });
-        if (verifyRes.ok) {
-          const verifyDetails = await verifyRes.json();
-          const assignedParticipant = (verifyDetails.participants || []).find(part => 
+        if (!detailsRes.ok) throw new Error('Failed to get conversation details');
+        const details = await detailsRes.json();
+        console.log('Participants structure:', details.participants);
+
+        // Step 3: Try the simple approach - just send userId in patch
+        console.log('Step 3: Attempting simple participant patch...');
+        const p = (details.participants||[]).find(x => ['acd','agent','user'].includes(x.purpose)) || (details.participants||[])[0];
+        
+        if (p) {
+          console.log('Found participant to patch:', p.id, 'Purpose:', p.purpose);
+          
+          // Try the minimal approach - just send userId
+          const simplePatchRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/participants/${p.id}`, {
+            method:'PATCH', 
+            headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
+            body: JSON.stringify({ userId: userId })
+          });
+          
+          if (simplePatchRes.ok) {
+            console.log('✅ Simple patch successful');
+          } else {
+            const errorText = await simplePatchRes.text();
+            console.error('Simple patch failed:', simplePatchRes.status, errorText);
+            
+            // If simple patch fails, try with purpose
+            console.log('Trying patch with purpose...');
+            const purposePatchRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/participants/${p.id}`, {
+              method:'PATCH', 
+              headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
+              body: JSON.stringify({ 
+                userId: userId,
+                purpose: 'agent'
+              })
+            });
+            
+            if (!purposePatchRes.ok) {
+              const purposeError = await purposePatchRes.text();
+              console.error('Purpose patch failed:', purposePatchRes.status, purposeError);
+              throw new Error(`Failed to assign participant: ${purposePatchRes.status}`);
+            }
+            console.log('✅ Purpose patch successful');
+          }
+        } else {
+          throw new Error('No suitable participant found to patch');
+        }
+
+        // Step 4: Wait longer and verify
+        console.log('Step 4: Waiting for assignment to process...');
+        await new Promise(resolve => setTimeout(resolve, 4000));
+
+        // Step 5: Final verification
+        console.log('Step 5: Final verification...');
+        const finalVerifyRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`, { 
+          headers:{ Authorization:`Bearer ${accessToken}` }
+        });
+        if (finalVerifyRes.ok) {
+          const finalDetails = await finalVerifyRes.json();
+          console.log('Final participants:', finalDetails.participants);
+          
+          const assignedParticipant = (finalDetails.participants || []).find(part => 
             part.user && part.user.id === userId
           );
+          
           if (assignedParticipant) {
-            console.log('✅ Assignment verified - user found:', assignedParticipant.user.name);
+            console.log('✅ FINAL VERIFICATION: Assignment successful - user:', assignedParticipant.user.name);
           } else {
-            console.warn('❌ Assignment verification failed - user not found in participants');
+            console.warn('❌ FINAL VERIFICATION: Assignment failed - user not found');
+            // Log all participants for debugging
+            finalDetails.participants.forEach((p, i) => {
+              console.log(`Participant ${i}:`, p.id, p.purpose, p.user ? p.user.name : 'No user');
+            });
           }
         }
 
-        // Step 6: Disconnect the conversation
+        // Step 6: Disconnect
+        console.log('Step 6: Disconnecting conversation...');
         await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}`, {
           method:'PATCH',
           headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
           body: JSON.stringify({ state:'disconnected' })
         });
+        console.log('✅ Conversation disconnected');
 
         const queueName = document.getElementById('queueSelect').options[document.getElementById('queueSelect').selectedIndex].text;
         const userName = document.getElementById('userSelect').options[document.getElementById('userSelect').selectedIndex].text;
         showStatusMessage(`Interaction for <b>${userName}</b> in <b>${queueName}</b> created and stored in <b>Performance &gt; Workspace &gt; Interactions</b>.`);
       } catch (e) {
-        console.error(e);
+        console.error('Create interaction failed:', e);
         showStatusMessage(`Error creating interaction: ${e.message}`, 'error');
       } finally {
         showLoader(false);
