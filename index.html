@@ -44,7 +44,7 @@
     <div class="loader" id="loader"><div class="spinner"></div><span>Creating interaction...</span></div>
     <button id="createInteractionBtn">Create Proxy Interaction</button>
     <div id="statusMessage"></div>
-    </div>
+  </div>
 
   <!-- Debug panel (temporary) -->
   <div id="debug" style="font:12px/1.4 system-ui; background:#fff3cd; border:1px solid #ffeeba; padding:8px; margin:12px auto; max-width:600px; display:none">
@@ -56,6 +56,7 @@
 
   <script>
     const clientId = 'f2a0fa16-33cb-480b-a4ef-4766812dfb81';
+
     function getExactRedirectUri(){
       return `${location.origin}${location.pathname}`; // exact page URL incl. trailing slash
     }
@@ -63,7 +64,9 @@
     const oauthUrl = `https://login.euw2.pure.cloud/oauth/authorize?client_id=${clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}`;
     let accessToken = null;
 
-    const ENFORCE_WHITELIST = false; // DEBUG: show ALL users/queues; set true to re‑enable filtering
+    // DEBUG: set to true to only show whitelisted; false shows ALL entities you can view
+    const ENFORCE_WHITELIST = false;
+
     const whitelistedUserIds = [
       'fa677b42-4aff-45af-b7e7-749418788b88',
       '206a7f52-4f89-446f-afbf-ac879147a7ad',
@@ -113,8 +116,8 @@
 
         const queueSelect = document.getElementById('queueSelect');
         const userSelect  = document.getElementById('userSelect');
-        addPlaceholder(queueSelect, 'Select a queue');
-        addPlaceholder(userSelect,  'Select a user');
+        addPlaceholder(queueSelect, "Select a queue");
+        addPlaceholder(userSelect,  "Select a user");
 
         const filteredQueues = ENFORCE_WHITELIST ? queues.filter(q => whitelistedQueueIds.includes(q.id)) : queues;
         const filteredUsers  = ENFORCE_WHITELIST ? users.filter(u => whitelistedUserIds.includes(u.id)) : users;
@@ -124,43 +127,26 @@
         if (filteredQueues.length) filteredQueues.forEach(q => queueSelect.add(new Option(q.name, q.id)));
         if (filteredUsers.length) filteredUsers.sort((a,b) => a.name.localeCompare(b.name)).forEach(u => userSelect.add(new Option(u.name, u.id)));
 
-        if (!filteredQueues.length) { console.warn('No queues after filtering', { total: queues.length, whitelist: whitelistedQueueIds }); showStatusMessage('No queues returned. If this is unexpected, your role may lack <b>Routing &gt; Queue &gt; View</b> or you may be in the wrong division.', 'error'); queueSelect.disabled = true; }
-        if (!filteredUsers.length) { console.warn('No users after filtering', { total: users.length, whitelist: whitelistedUserIds }); showStatusMessage('No users returned. Ensure your role has <b>Directory &gt; User &gt; View</b> and division access.', 'error'); userSelect.disabled = true; }
+        if (!filteredQueues.length) {
+          console.warn('No queues after filtering', { total: queues.length, whitelist: whitelistedQueueIds });
+          showStatusMessage(
+            "No queues returned. If this is unexpected, your role may lack <b>Routing &gt; Queue &gt; View</b> or you may be in the wrong division.",
+            'error'
+          );
+          queueSelect.disabled = true;
+        }
+        if (!filteredUsers.length) {
+          console.warn('No users after filtering', { total: users.length, whitelist: whitelistedUserIds });
+          showStatusMessage(
+            "No users returned. Ensure your role has <b>Directory &gt; User &gt; View</b> and division access.",
+            'error'
+          );
+          userSelect.disabled = true;
+        }
       } catch (e) {
         console.error('populateDropdowns failed', e);
         showStatusMessage(`Error loading data: ${escapeHTML(e.message)}`, 'error');
         document.getElementById('debug').style.display = 'block';
-      }
-    }`, q.id)));
-        }
-
-        // Populate users
-        if (filteredUsers.length) {
-          filteredUsers
-            .sort((a,b) => a.name.localeCompare(b.name))
-            .forEach(u => userSelect.add(new Option(u.name, u.id)));
-        }
-
-        // Helpful diagnostics
-        if (!filteredQueues.length) {
-          console.warn(`No queues after filtering. Total queues: ${queues.length}. Whitelist:`, whitelistedQueueIds);
-          showStatusMessage('No allowed queues based on the current whitelist. Check the console for details.', 'error');
-          queueSelect.disabled = true;
-        }
-        if (!filteredUsers.length) {
-          console.warn(`No users after filtering. Total users: ${users.length}. Whitelist:`, whitelistedUserIds);
-          showStatusMessage('No allowed users based on the current whitelist. Check the console for details.', 'error');
-          userSelect.disabled = true;
-        }
-      } catch (e) {
-        console.error(e);
-        showStatusMessage(`Error loading data: ${e.message}. Ensure the OAuth token has scopes: users:view and routing:queue:view.`, 'error');
-      }
-    }
-        if (!filteredUsers.length) { userSelect.add(new Option('No allowed users','')); userSelect.disabled = true; }
-      } catch (e) {
-        console.error(e);
-        showStatusMessage(`Error loading data: ${e.message}`, 'error');
       }
     }
 
@@ -175,22 +161,6 @@
       let all = [], pageNumber = 1, pageCount = 1;
       while (pageNumber <= pageCount) {
         const data = await apiFetch(`${baseUrl}?pageNumber=${pageNumber}&pageSize=100`);
-        all = all.concat(data.entities || []);
-        pageCount = Number(data.pageCount || pageCount || 1);
-        pageNumber++;
-      }
-      return all;
-    }
-
-    function setDebugCounts({ q, u, qf, uf } = {}){
-      const dbg = document.getElementById('debug');
-      if (!dbg) return;
-      if (q !== undefined) document.getElementById('dbgQueues').textContent = q;
-      if (u !== undefined) document.getElementById('dbgUsers').textContent = u;
-      if (qf !== undefined) document.getElementById('dbgQueuesFiltered').textContent = qf;
-      if (uf !== undefined) document.getElementById('dbgUsersFiltered').textContent = uf;
-      dbg.style.display = 'block';
-    }?pageNumber=${pageNumber}&pageSize=25`);
         all = all.concat(data.entities || []);
         pageCount = Number(data.pageCount || pageCount || 1);
         pageNumber++;
@@ -224,12 +194,6 @@
         console.error('apiFetch error', { url, options, err });
         throw err;
       }
-    }
-
-    function addPlaceholder(selectEl, text){
-      const opt = new Option(text, '');
-      opt.disabled = true; opt.selected = true; opt.hidden = true;
-      selectEl.add(opt);
     }
 
     async function createInteraction() {
