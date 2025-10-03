@@ -60,6 +60,24 @@
     function getExactRedirectUri(){
       return `${location.origin}${location.pathname}`; // exact page URL incl. trailing slash
     }
+
+    function setDebugCounts(counts) {
+      if (counts.q !== undefined) document.getElementById('dbgQueues').textContent = counts.q;
+      if (counts.u !== undefined) document.getElementById('dbgUsers').textContent = counts.u;
+      if (counts.qf !== undefined) document.getElementById('dbgQueuesFiltered').textContent = counts.qf;
+      if (counts.uf !== undefined) document.getElementById('dbgUsersFiltered').textContent = counts.uf;
+      
+      // Show debug panel when this function is called
+      document.getElementById('debug').style.display = 'block';
+    }
+
+    function addPlaceholder(selectElement, text) {
+      const placeholder = new Option(text, '');
+      placeholder.disabled = true;
+      placeholder.selected = true;
+      selectElement.add(placeholder);
+    }
+
     const redirectUri = getExactRedirectUri();
     const oauthUrl = `https://login.euw2.pure.cloud/oauth/authorize?client_id=${clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}`;
     let accessToken = null;
