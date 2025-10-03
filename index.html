@@ -53,9 +53,6 @@
     const LOGIN_BASE = 'https://login.euw2.pure.cloud';
     const API_BASE   = 'https://api.euw2.pure.cloud';
 
-    // Enforce allow-list (true = only show whitelisted)
-    const ENFORCE_WHITELIST = true;
-
     const whitelistedUserIds = [
       'fa677b42-4aff-45af-b7e7-749418788b88',
       '206a7f52-4f89-446f-afbf-ac879147a7ad',
@@ -72,7 +69,6 @@
 
     // ======= OAUTH (Implicit) =======
     function getExactRedirectUri(){
-      // Must match the URI registered in Genesys exactly
       return REDIRECT_URI;
     }
     function buildAuthorizeUrl() {
@@ -86,7 +82,6 @@
     let accessToken = null;
 
     document.addEventListener('DOMContentLoaded', () => {
-      // Extract access_token from hash
       const params = new URLSearchParams(window.location.hash.slice(1));
       accessToken = params.get('access_token');
       if (!accessToken) {
@@ -99,8 +94,8 @@
     // ======= APP INIT =======
     async function initializeApp() {
       try {
-        await populateQueue();       // single required queue (by ID, show name)
-        await populateUsers();       // whitelisted users (names)
+        await populateQueue();
+        await populateUsers();
         toggleCreateButton();
         document.getElementById('createInteractionBtn').addEventListener('click', createInteraction);
         ['queueSelect','userSelect'].forEach(id => {
@@ -125,7 +120,6 @@
         console.error('Queue lookup failed', e);
         const opt = new Option('Queue not found (ID usable)', REQUIRED_QUEUE_ID);
         sel.add(opt);
-        // leave disabled=false so user can still proceed if needed
         sel.disabled = false;
       }
     }
@@ -134,7 +128,7 @@
       const sel = document.getElementById('userSelect');
       sel.innerHTML = '';
       try {
-        // Fetch each whitelisted user by ID (fast + least privilege)
+        // Fetch each whitelisted user by ID
         const results = await Promise.allSettled(
           whitelistedUserIds.map(id => apiFetch(`${API_BASE}/api/v2/users/${id}`))
         );
@@ -176,7 +170,8 @@
       setButtonDisabled(true);
 
       try {
-        // 1) Create “dummy” email that lands in the queue
+        // 1) Create email interaction
+        console.log('Creating email interaction...');
         const interaction = await apiFetch(`${API_BASE}/api/v2/conversations/emails`, {
           method: 'POST',
           body: JSON.stringify({
@@ -188,57 +183,89 @@
           })
         });
         const conversationId = interaction.id;
+        console.log('Created interaction:', conversationId);
 
-        // 2) Assign it to the selected agent
-        try {
-          await apiFetch(`${API_BASE}/api/v2/conversations/${conversationId}/assign`, {
-            method: 'POST',
-            body: JSON.stringify({ userId })
-          });
-        } catch (assignErr) {
-          // Fallback: PATCH a suitable participant with userId
-          console.warn('Assign endpoint failed; falling back to participant PATCH', assignErr);
-          const details = await apiFetch(`${API_BASE}/api/v2/conversations/${conversationId}`);
-          const p = (details.participants || []).find(x => {
-            const purp = (x.purpose || '').toLowerCase();
-            return purp === 'agent' || purp === 'user' || purp === 'acd';
-          });
-          if (p) {
-            await apiFetch(`${API_BASE}/api/v2/conversations/${conversationId}/participants/${p.id}`, {
+        // Wait for conversation to initialize
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // 2) Get conversation details to find participants
+        console.log('Getting conversation details...');
+        const details = await apiFetch(`${API_BASE}/api/v2/conversations/${conversationId}`);
+        console.log('Participants:', details.participants);
+
+        // 3) Find the ACD participant and assign to user
+        const acdParticipant = (details.participants || []).find(p => 
+          p.purpose && p.purpose.toLowerCase() === 'acd'
+        );
+
+        if (acdParticipant) {
+          console.log('Found ACD participant:', acdParticipant.id);
+          try {
+            await apiFetch(`${API_BASE}/api/v2/conversations/${conversationId}/participants/${acdParticipant.id}`, {
               method: 'PATCH',
-              body: JSON.stringify({ userId })
+              body: JSON.stringify({ 
+                userId: userId,
+                purpose: 'agent'
+              })
             });
-          } else {
-            console.warn('No suitable participant to patch; proceeding to disconnect.');
+            console.log('Successfully assigned participant to user');
+          } catch (assignErr) {
+            console.error('Failed to assign participant:', assignErr);
+            throw new Error('Could not assign interaction to selected user');
           }
+        } else {
+          console.warn('No ACD participant found');
         }
 
-        // 3) Best-effort: create/link an External Contact (optional)
-        try {
-          if (externalReference) {
+        // 4) Wait for assignment to process
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // 5) Create external contact with communicationId (required field)
+        if (externalReference) {
+          try {
+            console.log('Creating external contact...');
             const contact = await apiFetch(`${API_BASE}/api/v2/externalcontacts/contacts`, {
               method:'POST',
               body: JSON.stringify({
                 firstName: 'External',
                 lastName: externalReference || 'Work Item',
                 notes: [`Ref: ${externalReference}`],
-                addresses:[], phoneNumbers:[], emailAddresses:[]
+                addresses: [], 
+                phoneNumbers: [], 
+                emailAddresses: [],
+                // Create a dummy communication entry as required
+                externalOrganization: {
+                  name: 'External Work Organization'
+                }
               })
             });
-            await apiFetch(`${API_BASE}/api/v2/externalcontacts/conversations/${conversationId}`, {
-              method:'PUT',
-              body: JSON.stringify({ externalContactId: contact.id })
+            
+            console.log('Created contact:', contact.id);
+            
+            // Link contact to conversation with communicationId
+            await apiFetch(`${API_BASE}/api/v2/externalcontacts/conversations`, {
+              method:'POST',
+              body: JSON.stringify({
+                conversationId: conversationId,
+                externalContactId: contact.id,
+                // Create a communication entry as required
+                communicationId: `${conversationId}-external`,
+                sessionId: conversationId
+              })
             });
+            console.log('External contact linked');
+          } catch (e) {
+            console.warn('External contact creation/link failed (non-blocking)', e);
           }
-        } catch (e) {
-          console.warn('External contact link failed (non-blocking)', e);
         }
 
-        // 4) Disconnect/complete the email so it’s stored without needing agent accept
+        // 6) Disconnect the conversation
+        console.log('Disconnecting conversation...');
         await apiFetch(`${API_BASE}/api/v2/conversations/emails/${conversationId}`, {
           method:'PATCH',
           body: JSON.stringify({ state: 'disconnected' })
         });
+        console.log('Conversation disconnected');
 
         const queueName = getSelectedText('queueSelect');
         const userName  = getSelectedText('userSelect');
@@ -247,7 +274,7 @@
           'success'
         );
       } catch (e) {
-        console.error(e);
+        console.error('Create interaction failed:', e);
         showStatusMessage(`Error creating interaction: ${escapeHTML(e.message)}`, 'error');
       } finally {
         showLoader(false);
@@ -267,7 +294,6 @@
       });
 
       if (res.status === 401) {
-        // Token expired / invalid — re-auth
         window.location.replace(buildAuthorizeUrl());
         throw new Error('Unauthorised (401) — redirecting to sign in.');
       }
