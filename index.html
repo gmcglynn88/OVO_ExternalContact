@@ -212,7 +212,7 @@
         
         console.log('Assignment response status:', assignRes.status);
         
-        // Step 3: If assignment fails, fallback to participant patch with GENERAL conversation endpoint
+        // Step 3: If assignment fails, fallback to participant patch with more complete data
         if (!assignRes.ok) {
           console.warn('Manual assign failed; falling back to participant PATCH');
           const detailsRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`, { 
@@ -221,18 +221,41 @@
           if (detailsRes.ok) {
             const details = await detailsRes.json();
             console.log('Participants found:', details.participants);
+            
             // Use the exact same logic as working version
             const p = (details.participants||[]).find(x => ['acd','agent','user'].includes(x.purpose)) || (details.participants||[])[0];
             if (p) {
               console.log('Patching participant:', p.id, 'with user:', userId);
-              await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/participants/${p.id}`, {
+              
+              // Create a more complete patch payload
+              const patchPayload = {
+                userId: userId,
+                purpose: 'agent',
+                // Include existing participant data to avoid overwriting important fields
+                startTime: p.startTime || new Date().toISOString(),
+                participantType: p.participantType || 'external',
+                // Preserve existing attributes if they exist
+                attributes: p.attributes || {}
+              };
+              
+              console.log('Patch payload:', patchPayload);
+              
+              const patchRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/participants/${p.id}`, {
                 method:'PATCH', 
                 headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
-                body: JSON.stringify({ userId })
+                body: JSON.stringify(patchPayload)
               });
+              
+              if (!patchRes.ok) {
+                const errorText = await patchRes.text();
+                console.error('Participant patch failed:', patchRes.status, errorText);
+                throw new Error(`Failed to assign participant: ${patchRes.status}`);
+              }
+              
               console.log('Participant patched successfully');
             } else {
               console.warn('No participant found to patch');
+              throw new Error('No participant found to assign');
             }
           }
         } else {
@@ -241,9 +264,26 @@
 
         // Step 4: Wait for assignment to process
         console.log('Waiting for assignment to complete...');
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 3000));
 
-        // Step 5: Disconnect the conversation
+        // Step 5: Verify assignment by getting updated conversation details
+        console.log('Verifying assignment...');
+        const verifyRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`, { 
+          headers:{ Authorization:`Bearer ${accessToken}` }
+        });
+        if (verifyRes.ok) {
+          const verifyDetails = await verifyRes.json();
+          const assignedParticipant = (verifyDetails.participants || []).find(part => 
+            part.user && part.user.id === userId
+          );
+          if (assignedParticipant) {
+            console.log('✅ Assignment verified - user found:', assignedParticipant.user.name);
+          } else {
+            console.warn('❌ Assignment verification failed - user not found in participants');
+          }
+        }
+
+        // Step 6: Disconnect the conversation
         await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}`, {
           method:'PATCH',
           headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
