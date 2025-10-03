@@ -6,7 +6,7 @@
   <title>External Work Creation</title>
   <style>
     :root { --primary-color:#63AB8F; --primary-hover:#4D8F77; --border-color:#e0e0e0; --shadow:0 2px 8px rgba(0,0,0,.1); }
-    body{font-family:'Aptos','Segoe UI',system-ui,-apple-system,sans-serif;background:#f9f9f9;margin:0;padding:2rem;max-width:600px;margin-inline:auto;color:#333;line-height:1.6}
+    body{font-family:'Aptos','Segoe UI',system-ui,-apple-system,sans-serif;background:#f9f9f9;margin:0;padding:2rem;max-width:650px;margin-inline:auto;color:#333;line-height:1.6}
     .card{background:#fff;border-radius:8px;box-shadow:var(--shadow);padding:2rem;margin-top:2rem}
     .logo-container{text-align:center;margin-bottom:1.5rem}
     #logo{max-width:180px;height:auto;margin-bottom:1rem}
@@ -14,6 +14,7 @@
     label{display:block;margin:1.2rem 0 .4rem;font-weight:500;color:#555}
     select,input{width:100%;padding:.8rem;border:1px solid var(--border-color);border-radius:4px;font:inherit;transition:border .2s}
     select:focus,input:focus{outline:none;border-color:var(--primary-color);box-shadow:0 0 0 2px rgba(99,171,143,.2)}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     button{width:100%;background:var(--primary-color);color:#fff;border:none;padding:.9rem;font-size:1rem;font-weight:500;border-radius:4px;cursor:pointer;transition:background .2s;margin-top:2rem;text-transform:uppercase;letter-spacing:.5px}
     button:hover{background:var(--primary-hover)}
     button:disabled{opacity:.6;cursor:not-allowed}
@@ -23,6 +24,7 @@
     .loader{display:none;text-align:center;margin:1rem 0}
     .spinner{border:3px solid rgba(0,0,0,.1);border-top:3px solid var(--primary-color);border-radius:50%;width:20px;height:20px;animation:spin 1s linear infinite;display:inline-block;vertical-align:middle;margin-right:8px}
     @keyframes spin{to{transform:rotate(360deg)}}
+    small.hint{color:#666;display:block;margin-top:.25rem}
   </style>
 </head>
 <body>
@@ -32,31 +34,44 @@
     </div>
     <h1>External Work Creation</h1>
 
-    <label for="queueSelect">Select Queue:</label>
+    <div class="row">
+      <div>
+        <label for="regionSelect">Genesys Cloud Region</label>
+        <select id="regionSelect">
+          <option value="mypurecloud.ie" selected>Dublin (mypurecloud.ie)</option>
+          <option value="euw2.pure.cloud">London (euw2.pure.cloud)</option>
+          <option value="mypurecloud.de">Frankfurt (mypurecloud.de)</option>
+          <option value="mypurecloud.com">US-East (mypurecloud.com)</option>
+          <option value="usw2.pure.cloud">US-West2 (usw2.pure.cloud)</option>
+          <option value="apne2.pure.cloud">Tokyo (apne2.pure.cloud)</option>
+          <option value="aps1.pure.cloud">Sydney (aps1.pure.cloud)</option>
+        </select>
+        <small class="hint">Pick the org’s region (Dublin vs London matters).</small>
+      </div>
+      <div>
+        <label for="externalReference">External Reference</label>
+        <input type="text" id="externalReference" placeholder="Optional ref/link">
+      </div>
+    </div>
+
+    <label for="queueSelect">Select Queue</label>
     <select id="queueSelect"></select>
 
-    <label for="userSelect">Select User:</label>
+    <label for="userSelect">Select User</label>
     <select id="userSelect"></select>
 
-    <label for="externalReference">External Reference:</label>
-    <input type="text" id="externalReference" placeholder="Enter external reference (optional)">
-
     <div class="loader" id="loader"><div class="spinner"></div><span>Creating interaction...</span></div>
-    <button id="createInteractionBtn">Create Proxy Interaction</button>
+    <button id="createInteractionBtn" disabled>Create Proxy Interaction</button>
     <div id="statusMessage"></div>
   </div>
 
   <script>
+    // =========================
+    // Config you may edit
+    // =========================
     const clientId = 'f2a0fa16-33cb-480b-a4ef-4766812dfb81';
 
-    function getExactRedirectUri(){
-      return `${location.origin}${location.pathname}`;
-    }
-
-    const redirectUri = getExactRedirectUri();
-    const oauthUrl = `https://login.euw2.pure.cloud/oauth/authorize?client_id=${clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}`;
-    let accessToken = null;
-
+    // Whitelists (unchanged)
     const whitelistedUserIds = [
       'fa677b42-4aff-45af-b7e7-749418788b88',
       '206a7f52-4f89-446f-afbf-ac879147a7ad',
@@ -73,106 +88,176 @@
       '4a6f26c7-2b69-4c34-99e2-e156230ec2bd'
     ];
 
-    document.addEventListener('DOMContentLoaded', () => {
-      const hash = window.location.hash.substring(1);
+    // =========================
+    // Region plumbing
+    // =========================
+    function buildEnv(host) {
+      const loginBase = `https://login.${host}`;
+      const apiBase   = `https://api.${host}`;
+      return { loginBase, apiBase };
+    }
+    function getExactRedirectUri(){ return `${location.origin}${location.pathname}`; }
+    function getAccessTokenFromHash() {
+      const hash = window.location.hash.replace(/^#/, '');
       const params = new URLSearchParams(hash);
-      accessToken = params.get('access_token');
-      if (!accessToken) window.location.href = oauthUrl;
-      else initializeApp();
-    });
+      return params.get('access_token');
+    }
+    function buildAuthorizeUrl(loginBase) {
+      const redirectUri = getExactRedirectUri();
+      return `${loginBase}/oauth/authorize?client_id=${encodeURIComponent(clientId)}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    }
 
-    async function initializeApp() {
+    // =========================
+    // State
+    // =========================
+    let accessToken = null;
+    let apiBase = 'https://api.mypurecloud.ie';
+    let loginBase = 'https://login.mypurecloud.ie';
+
+    // =========================
+    // Boot
+    // =========================
+    document.addEventListener('DOMContentLoaded', async () => {
+      const region = document.getElementById('regionSelect').value;
+      ({ loginBase, apiBase } = buildEnv(region));
+
+      accessToken = getAccessTokenFromHash();
+      if (!accessToken) {
+        window.location.href = buildAuthorizeUrl(loginBase);
+        return;
+      }
+
       await populateDropdowns();
       document.getElementById('createInteractionBtn').addEventListener('click', createInteraction);
-    }
+      document.getElementById('queueSelect').addEventListener('change', toggleCreateButton);
+      document.getElementById('userSelect').addEventListener('change', toggleCreateButton);
+      document.getElementById('regionSelect').addEventListener('change', () => {
+        const newRegion = document.getElementById('regionSelect').value;
+        ({ loginBase, apiBase } = buildEnv(newRegion));
+        window.location.hash = '';
+        window.location.href = buildAuthorizeUrl(loginBase);
+      });
+      toggleCreateButton();
+    });
 
-    async function populateDropdowns() {
-      try {
-        showLoader(true);
-        
-        // Only fetch the specific whitelisted items to avoid rate limits
-        const [queues, users] = await Promise.all([
-          fetchWhitelistedQueues(),
-          fetchWhitelistedUsers()
-        ]);
-
-        const queueSelect = document.getElementById('queueSelect');
-        const userSelect = document.getElementById('userSelect');
-
-        // Clear and populate queues
-        queueSelect.innerHTML = '';
-        if (queues.length) {
-          queues.forEach(q => queueSelect.add(new Option(q.name, q.id)));
-        } else {
-          queueSelect.add(new Option('No allowed queues',''));
-          queueSelect.disabled = true;
-        }
-
-        // Clear and populate users
-        userSelect.innerHTML = '';
-        if (users.length) {
-          users.forEach(u => userSelect.add(new Option(u.name, u.id)));
-        } else {
-          userSelect.add(new Option('No allowed users',''));
-          userSelect.disabled = true;
-        }
-
-        toggleCreateButton();
-      } catch (e) {
-        console.error(e);
-        showStatusMessage(`Error loading data: ${e.message}`, 'error');
-      } finally {
-        showLoader(false);
-      }
-    }
-
-    // Fetch only specific whitelisted queues
-    async function fetchWhitelistedQueues() {
-      const queues = [];
-      for (const queueId of whitelistedQueueIds) {
-        try {
-          const response = await fetch(`https://api.euw2.pure.cloud/api/v2/routing/queues/${queueId}`, {
-            headers: { Authorization: `Bearer ${accessToken}` }
-          });
-          if (response.ok) {
-            const queue = await response.json();
-            queues.push(queue);
-          } else {
-            console.warn(`Failed to fetch queue ${queueId}:`, response.status);
-          }
-        } catch (e) {
-          console.warn(`Error fetching queue ${queueId}:`, e);
-        }
-      }
-      return queues;
-    }
-
-    // Fetch only specific whitelisted users
-    async function fetchWhitelistedUsers() {
-      const users = [];
-      for (const userId of whitelistedUserIds) {
-        try {
-          const response = await fetch(`https://api.euw2.pure.cloud/api/v2/users/${userId}`, {
-            headers: { Authorization: `Bearer ${accessToken}` }
-          });
-          if (response.ok) {
-            const user = await response.json();
-            users.push(user);
-          } else {
-            console.warn(`Failed to fetch user ${userId}:`, response.status);
-          }
-        } catch (e) {
-          console.warn(`Error fetching user ${userId}:`, e);
-        }
-      }
-      return users;
-    }
-
+    // =========================
+    // UI helpers
+    // =========================
     function toggleCreateButton() {
       const btn = document.getElementById('createInteractionBtn');
       btn.disabled = !(document.getElementById('queueSelect').value && document.getElementById('userSelect').value);
     }
+    function showLoader(show){ document.getElementById('loader').style.display = show ? 'block' : 'none'; }
+    function showStatusMessage(msg, type='success'){ const el = document.getElementById('statusMessage'); el.style.display='block'; el.className = type; el.innerHTML = msg; }
 
+    // =========================
+    // Data loading
+    // =========================
+    async function fetchAllPages(url) {
+      let all = [], pageNumber = 1, more = true;
+      while (more) {
+        const r = await fetch(`${url}?pageNumber=${pageNumber}&pageSize=25`, { headers:{ Authorization:`Bearer ${accessToken}` }});
+        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+        const data = await r.json();
+        all = all.concat(data.entities || []);
+        more = data.pageCount > pageNumber; pageNumber++;
+      }
+      return all;
+    }
+
+    async function populateDropdowns() {
+      try {
+        const queues = await fetchAllPages(`${apiBase}/api/v2/routing/queues`);
+        const users  = await fetchAllPages(`${apiBase}/api/v2/users`);
+
+        const queueSelect = document.getElementById('queueSelect');
+        const filteredQueues = queues.filter(q => whitelistedQueueIds.includes(q.id));
+        filteredQueues.forEach(q => queueSelect.add(new Option(q.name, q.id)));
+
+        const userSelect = document.getElementById('userSelect');
+        const filteredUsers = users.filter(u => whitelistedUserIds.includes(u.id));
+        filteredUsers.forEach(u => userSelect.add(new Option(u.name, u.id)));
+
+        if (!filteredQueues.length) { queueSelect.add(new Option('No allowed queues','')); queueSelect.disabled = true; }
+        if (!filteredUsers.length) { userSelect.add(new Option('No allowed users','')); userSelect.disabled = true; }
+      } catch (e) {
+        console.error(e);
+        showStatusMessage(`Error loading data: ${e.message}`, 'error');
+      }
+    }
+
+    // =========================
+    // Guards (config/eligibility)
+    // =========================
+    async function ensureQueueAllowsManualAssignment(queueId) {
+      const r = await fetch(`${apiBase}/api/v2/routing/queues/${queueId}`, {
+        headers:{ Authorization:`Bearer ${accessToken}` }
+      });
+      if (!r.ok) throw new Error(`Can't read queue: ${r.status} ${r.statusText}`);
+      const q = await r.json();
+      const enabled = !!(q.enableManualAssignment ?? q.manualAssignmentEnabled);
+      if (!enabled) throw new Error('Manual assignment is disabled on this queue (Admin → Queues → General → “Enable Manual Assignment”).');
+    }
+    async function ensureUserIsQueueMember(queueId, userId) {
+      let page=1, found=false;
+      while(!found) {
+        const r = await fetch(
+          `${apiBase}/api/v2/routing/queues/${queueId}/members?pageNumber=${page}&pageSize=100`,
+          { headers:{ Authorization:`Bearer ${accessToken}` } }
+        );
+        if (!r.ok) throw new Error(`Can't list queue members: ${r.status} ${r.statusText}`);
+        const data = await r.json();
+        found = (data.entities||[]).some(m => m.id === userId);
+        if (found) break;
+        if (!data.nextUri) break;
+        page++;
+      }
+      if (!found) throw new Error('Selected user is not a member of the selected queue.');
+    }
+
+    // =========================
+    // Race guards (state/participants)
+    // =========================
+    async function waitForAcdParticipant(conversationId, queueId, { timeoutMs=20000, intervalMs=500 } = {}) {
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        const r = await fetch(`${apiBase}/api/v2/conversations/${conversationId}`, {
+          headers:{ Authorization:`Bearer ${accessToken}` }
+        });
+        if (r.ok) {
+          const c = await r.json();
+          const acd = (c.participants||[]).find(p => p.purpose === 'acd' && p.queueId === queueId);
+          if (acd) return acd;
+        }
+        await delay(intervalMs);
+      }
+      throw new Error('Timed out waiting for ACD participant on the queue.');
+    }
+
+    async function waitForAgentLeg(conversationId, userId, { timeoutMs=20000, intervalMs=500 } = {}) {
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        const r = await fetch(`${apiBase}/api/v2/conversations/${conversationId}`, {
+          headers:{ Authorization:`Bearer ${accessToken}` }
+        });
+        if (r.ok) {
+          const c = await r.json();
+          const agent = (c.participants||[]).find(p =>
+            (p.purpose === 'agent' || p.purpose === 'user') &&
+            p.userId === userId
+          );
+          if (agent) return agent;
+        }
+        await delay(intervalMs);
+      }
+      throw new Error('Agent leg for selected user did not appear in time.');
+    }
+
+    function delay(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+    // =========================
+    // Main flow (PATCH-based assignment)
+    // =========================
     async function createInteraction() {
       const queueId = document.getElementById('queueSelect').value;
       const userId  = document.getElementById('userSelect').value;
@@ -180,153 +265,83 @@
 
       if (!queueId || !userId) return showStatusMessage('Please select both a queue and a user', 'error');
 
-      showLoader(true); 
-      clearStatus();
+      showLoader(true); showStatusMessage('', 'success');
 
       try {
-        // Step 1: Create the email interaction
-        console.log('Step 1: Creating email interaction...');
-        const interactionRes = await fetch('https://api.euw2.pure.cloud/api/v2/conversations/emails', {
+        await ensureQueueAllowsManualAssignment(queueId);
+        await ensureUserIsQueueMember(queueId, userId);
+
+        // 1) Create the email conversation on the selected queue
+        const createRes = await fetch(`${apiBase}/api/v2/conversations/emails`, {
           method:'POST',
           headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
           body: JSON.stringify({
-            queueId, 
-            provider:'QualityForm', 
-            direction:'INBOUND', 
+            queueId,
+            provider:'QualityForm',
+            direction:'INBOUND',
             fromName:'External Work',
-            subject: externalReference ? `External Work - ${externalReference}` : 'External Work Item',
-            attributes: { 
-              'External Link': externalReference,
-              'externalWorkItem': 'true'
-            }
+            attributes: { 'External Link': externalReference }
           })
         });
-        
-        if (!interactionRes.ok) {
-          const errorText = await interactionRes.text();
-          throw new Error(`Error creating interaction: ${interactionRes.status} ${interactionRes.statusText} - ${errorText}`);
-        }
-        
-        const interaction = await interactionRes.json();
+        if (!createRes.ok) throw new Error(await formatHttpError('Error creating interaction', createRes));
+        const interaction = await createRes.json();
         const conversationId = interaction.id;
-        console.log('✓ Created interaction:', conversationId);
 
-        // Step 2: Wait a moment for the conversation to initialize
-        console.log('Step 2: Waiting for conversation initialization...');
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // 2) Wait for the ACD leg on that queue
+        const acd = await waitForAcdParticipant(conversationId, queueId);
 
-        // Step 3: Get conversation details to find participants
-        console.log('Step 3: Getting conversation details...');
-        const detailsRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`, { 
-          headers:{ Authorization:`Bearer ${accessToken}` }
-        });
-        
-        if (!detailsRes.ok) {
-          throw new Error(`Failed to get conversation details: ${detailsRes.status}`);
-        }
-        
-        const details = await detailsRes.json();
-        console.log('Conversation participants:', details.participants);
-        
-        // Step 4: Find the ACD participant to assign
-        const acdParticipant = (details.participants || []).find(p => 
-          p.purpose && p.purpose.toLowerCase() === 'acd'
-        );
-        
-        if (!acdParticipant) {
-          throw new Error('No ACD participant found in conversation');
-        }
-        
-        console.log(`Found ACD participant: ${acdParticipant.id}`);
+        // 3) PATCH the email conversation to set the ACD participant's userId to the selected user
+        //    (This mirrors the schema you posted; include only the fields we intend to change.)
+        const patchBody = {
+          participants: [
+            {
+              id: acd.id,
+              userId: userId,
+              // Optional: you can set a friendly name on the participant if you wish
+              // name: document.getElementById('userSelect').selectedOptions[0]?.text || undefined
+            }
+          ],
+          // Optional: carry an external tag for later reporting
+          externalTag: externalReference || undefined
+        };
 
-        // Step 5: Assign the participant to the selected user
-        console.log('Step 4: Assigning participant to user:', userId);
-        const assignRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}/participants/${acdParticipant.id}`, {
+        const patchAssign = await fetch(`${apiBase}/api/v2/conversations/emails/${conversationId}`, {
           method:'PATCH',
           headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
-          body: JSON.stringify({ 
-            userId: userId,
-            purpose: 'agent'
-          })
+          body: JSON.stringify(patchBody)
         });
-        
-        if (!assignRes.ok) {
-          const errorText = await assignRes.text();
-          throw new Error(`Failed to assign participant: ${assignRes.status} - ${errorText}`);
-        }
-        
-        console.log('✓ Participant assigned successfully');
+        if (!patchAssign.ok) throw new Error(await formatHttpError('Participant patch failed', patchAssign));
 
-        // Step 6: Wait for assignment to complete
-        console.log('Step 5: Waiting for assignment to process...');
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // 4) Verify an agent/user leg for that user now exists
+        await waitForAgentLeg(conversationId, userId);
 
-        // Step 7: Create and link external contact (best-effort)
-        console.log('Step 6: Creating external contact...');
-        try {
-          const contactRes = await fetch('https://api.euw2.pure.cloud/api/v2/externalcontacts/contacts', {
-            method:'POST',
-            headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
-            body: JSON.stringify({ 
-              firstName: 'External',
-              lastName: externalReference || 'Work Item', 
-              addresses:[], 
-              phoneNumbers:[], 
-              emailAddresses:[],
-              notes: externalReference ? [`Ref: ${externalReference}`] : [] 
-            })
-          });
-
-          if (contactRes.ok) {
-            const contact = await contactRes.json();
-            const externalContactId = contact.id;
-            
-            await fetch(`https://api.euw2.pure.cloud/api/v2/externalcontacts/conversations/${conversationId}`, {
-              method:'PUT',
-              headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
-              body: JSON.stringify({ externalContactId })
-            });
-            console.log('✓ External contact linked');
-          } else {
-            console.warn('External contact creation failed');
-          }
-        } catch (e) {
-          console.warn('External contact creation/link failed', e);
-        }
-
-        // Step 8: Disconnect the conversation to close it
-        console.log('Step 7: Disconnecting conversation...');
-        const disconnectRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}`, {
+        // 5) Disconnect via the same PATCH endpoint (your requested behaviour)
+        const patchDisconnect = await fetch(`${apiBase}/api/v2/conversations/emails/${conversationId}`, {
           method:'PATCH',
           headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
-          body: JSON.stringify({ 
-            state: 'disconnected'
-          })
+          body: JSON.stringify({ state: 'disconnected' })
         });
+        if (!patchDisconnect.ok) throw new Error(await formatHttpError('Disconnect failed', patchDisconnect));
 
-        if (!disconnectRes.ok) {
-          const errorText = await disconnectRes.text();
-          throw new Error(`Failed to disconnect conversation: ${disconnectRes.status} - ${errorText}`);
-        }
-        
-        console.log('✓ Conversation disconnected successfully');
-
-        const queueName = document.getElementById('queueSelect').options[document.getElementById('queueSelect').selectedIndex].text;
-        const userName = document.getElementById('userSelect').options[document.getElementById('userSelect').selectedIndex].text;
-        
-        showStatusMessage(`Interaction for <b>${userName}</b> in <b>${queueName}</b> created and stored in <b>Performance &gt; Workspace &gt; Interactions</b>.`);
-        
+        const queueName = document.getElementById('queueSelect').selectedOptions[0]?.text || 'Queue';
+        const userName  = document.getElementById('userSelect').selectedOptions[0]?.text || 'User';
+        showStatusMessage(`Interaction for <b>${userName}</b> in <b>${queueName}</b> created and assigned (via PATCH), then disconnected for filing. Check <b>Performance &gt; Workspace &gt; Interactions</b>.`);
       } catch (e) {
-        console.error('Create interaction failed:', e);
-        showStatusMessage(`Error creating interaction: ${e.message}`, 'error');
+        console.error(e);
+        showStatusMessage(e.message, 'error');
       } finally {
         showLoader(false);
       }
     }
 
-    function showLoader(show){ document.getElementById('loader').style.display = show ? 'block' : 'none'; }
-    function clearStatus(){ const el = document.getElementById('statusMessage'); el.style.display='none'; el.textContent=''; el.className=''; }
-    function showStatusMessage(msg, type='success'){ const el = document.getElementById('statusMessage'); el.style.display='block'; el.className = type; el.innerHTML = msg; }
+    // =========================
+    // Error helper
+    // =========================
+    async function formatHttpError(prefix, res) {
+      let txt = '';
+      try { txt = await res.text(); } catch (_) {}
+      return `${prefix}: ${res.status} ${res.statusText}${txt ? ' — ' + txt : ''}`;
+    }
   </script>
 </body>
 </html>
