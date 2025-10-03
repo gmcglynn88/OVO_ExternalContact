@@ -207,58 +207,56 @@
         // Wait for conversation to initialize
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        // Step 2: Get conversation details to understand the structure
-        console.log('Step 2: Getting conversation details...');
-        const detailsRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`, { 
-          headers:{ Authorization:`Bearer ${accessToken}` }
+        // Step 2: Try conversation transfer to user
+        console.log('Step 2: Attempting conversation transfer to user...');
+        const transferRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/participants/transfer`, {
+          method:'POST',
+          headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
+          body: JSON.stringify({
+            userId: userId,
+            transferType: 'Attended'
+          })
         });
-        if (!detailsRes.ok) throw new Error('Failed to get conversation details');
-        const details = await detailsRes.json();
-        console.log('Participants structure:', details.participants);
 
-        // Step 3: Try the simple approach - just send userId in patch
-        console.log('Step 3: Attempting simple participant patch...');
-        const p = (details.participants||[]).find(x => ['acd','agent','user'].includes(x.purpose)) || (details.participants||[])[0];
-        
-        if (p) {
-          console.log('Found participant to patch:', p.id, 'Purpose:', p.purpose);
-          
-          // Try the minimal approach - just send userId
-          const simplePatchRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/participants/${p.id}`, {
-            method:'PATCH', 
-            headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
-            body: JSON.stringify({ userId: userId })
-          });
-          
-          if (simplePatchRes.ok) {
-            console.log('✅ Simple patch successful');
-          } else {
-            const errorText = await simplePatchRes.text();
-            console.error('Simple patch failed:', simplePatchRes.status, errorText);
-            
-            // If simple patch fails, try with purpose
-            console.log('Trying patch with purpose...');
-            const purposePatchRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/participants/${p.id}`, {
-              method:'PATCH', 
-              headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
-              body: JSON.stringify({ 
-                userId: userId,
-                purpose: 'agent'
-              })
-            });
-            
-            if (!purposePatchRes.ok) {
-              const purposeError = await purposePatchRes.text();
-              console.error('Purpose patch failed:', purposePatchRes.status, purposeError);
-              throw new Error(`Failed to assign participant: ${purposePatchRes.status}`);
-            }
-            console.log('✅ Purpose patch successful');
-          }
+        if (transferRes.ok) {
+          console.log('✅ Transfer successful');
         } else {
-          throw new Error('No suitable participant found to patch');
+          console.warn('Transfer failed, status:', transferRes.status);
+          const errorText = await transferRes.text();
+          console.warn('Transfer error:', errorText);
+          
+          // If transfer fails, try the old participant patch method but with a different approach
+          console.log('Step 3: Falling back to direct participant assignment...');
+          const detailsRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`, { 
+            headers:{ Authorization:`Bearer ${accessToken}` }
+          });
+          if (detailsRes.ok) {
+            const details = await detailsRes.json();
+            const acdParticipant = (details.participants||[]).find(p => p.purpose === 'acd');
+            
+            if (acdParticipant) {
+              console.log('Found ACD participant:', acdParticipant.id);
+              
+              // Try direct assignment with minimal payload
+              const directAssignRes = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/participants/${acdParticipant.id}`, {
+                method:'PATCH', 
+                headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json' },
+                body: JSON.stringify({ 
+                  userId: userId
+                })
+              });
+              
+              if (!directAssignRes.ok) {
+                const directError = await directAssignRes.text();
+                console.error('Direct assignment failed:', directAssignRes.status, directError);
+                throw new Error('All assignment methods failed');
+              }
+              console.log('✅ Direct assignment successful');
+            }
+          }
         }
 
-        // Step 4: Wait longer and verify
+        // Step 4: Wait and verify
         console.log('Step 4: Waiting for assignment to process...');
         await new Promise(resolve => setTimeout(resolve, 4000));
 
@@ -269,8 +267,6 @@
         });
         if (finalVerifyRes.ok) {
           const finalDetails = await finalVerifyRes.json();
-          console.log('Final participants:', finalDetails.participants);
-          
           const assignedParticipant = (finalDetails.participants || []).find(part => 
             part.user && part.user.id === userId
           );
@@ -279,10 +275,7 @@
             console.log('✅ FINAL VERIFICATION: Assignment successful - user:', assignedParticipant.user.name);
           } else {
             console.warn('❌ FINAL VERIFICATION: Assignment failed - user not found');
-            // Log all participants for debugging
-            finalDetails.participants.forEach((p, i) => {
-              console.log(`Participant ${i}:`, p.id, p.purpose, p.user ? p.user.name : 'No user');
-            });
+            console.log('All participants:', finalDetails.participants);
           }
         }
 
