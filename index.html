@@ -26,8 +26,6 @@
     @keyframes spin{to{transform:rotate(360deg)}}
     small.hint{color:#666;display:block;margin-top:.25rem}
   </style>
-  <!-- Genesys Cloud SDK -->
-  <script src="https://sdk-cdn.mypurecloud.com/javascript/latest/purecloud-platform-client-v2.min.js"></script>
 </head>
 <body>
   <div class="card">
@@ -53,6 +51,10 @@
     <div id="statusMessage"></div>
   </div>
 
+  <!-- Genesys Cloud SDK FIRST -->
+  <script src="https://sdk-cdn.mypurecloud.com/javascript/latest/purecloud-platform-client-v2.min.js"></script>
+
+  <!-- Your app code AFTER -->
   <script>
     // ===== CONFIG =====
     const CLIENT_ID = "YOUR_CLIENT_ID";         // Replace with your OAuth Client ID
@@ -127,7 +129,6 @@
       // 2. Assign to agentId
       // 3. Auto-close
 
-      // Example placeholder:
       console.log("Would create external work for agent:", agentId);
       await new Promise(res => setTimeout(res, 1500));
       return true;
@@ -146,7 +147,7 @@
       if(!agentId){showStatus("Please select an agent",true);return;}
 
       document.getElementById("loader").style.display="block";
-      showStatus("",false); // clear
+      showStatus("",false);
 
       try{
         await createExternalWork(agentId);
