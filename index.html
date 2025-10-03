@@ -48,7 +48,10 @@
 
   <script>
     const clientId = 'f2a0fa16-33cb-480b-a4ef-4766812dfb81';
-    const redirectUri = 'https://gmcglynn88.github.io/OVO_ExternalContact/';
+    function getExactRedirectUri(){
+      return `${location.origin}${location.pathname}`; // exact page URL incl. trailing slash
+    }
+    const redirectUri = getExactRedirectUri();
     const oauthUrl = `https://login.euw2.pure.cloud/oauth/authorize?client_id=${clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}`;
     let accessToken = null;
 
