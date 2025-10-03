@@ -61,6 +61,21 @@
     const responseType = 'token';
     const oauthUrl = `https://api.euw2.pure.cloud/oauth/authorize?client_id=${clientId}&response_type=${responseType}&redirect_uri=${encodeURIComponent(redirectUri)}`;
 
+    // Predefined agent IDs and queue ID
+    const AGENT_IDS = [
+      'fa677b42-4aff-45af-b7e7-749418788b88',
+      '206a7f52-4f89-446f-afbf-ac879147a7ad',
+      '14ecd5fc-30f9-4214-809f-93771752bfb6',
+      '79148e85-0da8-4f3e-9cdf-1ce4d832f5a4',
+      '4ec6fd9a-e335-4d96-9504-05a1fbaa46a9',
+      '207b29f5-8895-429c-b3bb-4879b41d8718',
+      '4cd8cbf4-a8a1-4b49-9769-825d1cfc9e08',
+      '6e917925-2cff-49b5-a730-55db79445280',
+      'fed76596-cfa5-4fda-bb15-49985065480e',
+      '660c4154-ba9b-4e84-90ec-c9c9b409ac41'
+    ];
+    const TARGET_QUEUE_ID = '4a6f26c7-2b69-4c34-99e2-e156230ec2bd';
+
     document.addEventListener('DOMContentLoaded', () => {
       const hash = window.location.hash.substring(1);
       const params = new URLSearchParams(hash);
@@ -83,19 +98,33 @@
 
     async function populateDropdowns(token) {
       try {
+        // Fetch queues and find the target queue
         const queues = await fetchAllPages('https://api.euw2.pure.cloud/api/v2/routing/queues', token);
-        const users = await fetchAllPages('https://api.euw2.pure.cloud/api/v2/users', token);
-
         const queueSelect = document.getElementById('queueSelect');
+        
+        let targetQueueFound = false;
         queues.forEach(queue => {
           const option = document.createElement('option');
           option.value = queue.id;
           option.text = queue.name;
           queueSelect.add(option);
+          
+          // Pre-select the target queue
+          if (queue.id === TARGET_QUEUE_ID) {
+            queueSelect.value = TARGET_QUEUE_ID;
+            targetQueueFound = true;
+          }
         });
 
+        if (!targetQueueFound) {
+          console.warn(`Target queue with ID ${TARGET_QUEUE_ID} not found`);
+        }
+
+        // Fetch only the specific agents we need
         const userSelect = document.getElementById('userSelect');
-        users.forEach(user => {
+        const agents = await fetchSpecificUsers(AGENT_IDS, token);
+        
+        agents.forEach(user => {
           const option = document.createElement('option');
           option.value = user.id;
           option.text = user.name;
@@ -106,6 +135,29 @@
         console.error('Error populating dropdowns:', error);
         document.getElementById('statusMessage').innerText = `Error loading data: ${error.message}`;
       }
+    }
+
+    async function fetchSpecificUsers(userIds, token) {
+      const users = [];
+      
+      for (const userId of userIds) {
+        try {
+          const response = await fetch(`https://api.euw2.pure.cloud/api/v2/users/${userId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+
+          if (response.ok) {
+            const user = await response.json();
+            users.push(user);
+          } else {
+            console.warn(`User with ID ${userId} not found or error fetching: ${response.status}`);
+          }
+        } catch (error) {
+          console.error(`Error fetching user ${userId}:`, error);
+        }
+      }
+      
+      return users;
     }
 
     async function fetchAllPages(url, token) {
@@ -185,7 +237,7 @@
           throw new Error(`Error assigning user: ${assignResponse.status} ${assignResponse.statusText}`);
         }
 
-        const disconnectResponse = await fetch(`https://https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}`, {
+        const disconnectResponse = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}`, {
           method: 'PATCH',
           headers: {
             'Authorization': `Bearer ${token}`,
