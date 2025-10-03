@@ -123,49 +123,53 @@
     }
 
     async function populateDropdowns() {
-      try {
-        const [queues, users] = await Promise.all([
-          fetchAllPages('https://api.euw2.pure.cloud/api/v2/routing/queues'),
-          fetchAllPages('https://api.euw2.pure.cloud/api/v2/users')
-        ]);
+  try {
+    const [queues, users] = await Promise.all([
+      fetchAllPages('https://api.euw2.pure.cloud/api/v2/routing/queues'),
+      fetchAllPages('https://api.euw2.pure.cloud/api/v2/users')
+    ]);
 
-        // Update debug panel
-        setDebugCounts({ q: queues.length, u: users.length });
+    // Update debug panel
+    setDebugCounts({ q: queues.length, u: users.length });
 
-        const queueSelect = document.getElementById('queueSelect');
-        const userSelect  = document.getElementById('userSelect');
-        addPlaceholder(queueSelect, "Select a queue");
-        addPlaceholder(userSelect,  "Select a user");
+    const queueSelect = document.getElementById('queueSelect');
+    const userSelect  = document.getElementById('userSelect');
+    addPlaceholder(queueSelect, "Select a queue");
+    addPlaceholder(userSelect,  "Select a user");
 
-        const filteredQueues = ENFORCE_WHITELIST ? queues.filter(q => whitelistedQueueIds.includes(q.id)) : queues;
-        const filteredUsers  = ENFORCE_WHITELIST ? users.filter(u => whitelistedUserIds.includes(u.id)) : users;
+    const filteredQueues = ENFORCE_WHITELIST ? queues.filter(q => whitelistedQueueIds.includes(q.id)) : queues;
+    const filteredUsers  = ENFORCE_WHITELIST ? users.filter(u => whitelistedUserIds.includes(u.id)) : users;
 
-        setDebugCounts({ qf: filteredQueues.length, uf: filteredUsers.length });
+    setDebugCounts({ qf: filteredQueues.length, uf: filteredUsers.length });
 
-        if (filteredQueues.length) filteredQueues.forEach(q => queueSelect.add(new Option(q.name, q.id)));
-        if (filteredUsers.length) filteredUsers.sort((a,b) => a.name.localeCompare(b.name)).forEach(u => userSelect.add(new Option(u.name, u.id)));
-
-        if (!filteredQueues.length) {
-          console.warn('No queues after filtering', { total: queues.length, whitelist: whitelistedQueueIds });
-          showStatusMessage(
-            "No queues returned. If this is unexpected, your role may lack <b>Routing &gt; Queue &gt; View</b> or you may be in the wrong division.",
-            'error'
-          );
-          queueSelect.disabled = true;
-        }
-        if (!filteredUsers.length) {
-          console.warn('No users after filtering', { total: users.length, whitelist: whitelistedUserIds });
-          showStatusMessage(
-            "No users returned. Ensure your role has <b>Directory &gt; User &gt; View</b> and division access.",
-            'error'
-          );
-          userSelect.disabled = true;
-        }
-      } catch (e) {
-        console.error('populateDropdowns failed', e);
-        showStatusMessage(`Error loading data: ${escapeHTML(e.message)}`, 'error');
-        document.getElementById('debug').style.display = 'block';
-      }
+    // Only show validation errors for filtered results, not total results
+    if (filteredQueues.length) {
+      filteredQueues.forEach(q => queueSelect.add(new Option(q.name, q.id)));
+    } else {
+      console.warn('No queues after filtering', { total: queues.length, whitelist: whitelistedQueueIds });
+      showStatusMessage(
+        "No whitelisted queues available. Please check your queue whitelist configuration.",
+        'error'
+      );
+      queueSelect.disabled = true;
+    }
+    
+    if (filteredUsers.length) {
+      filteredUsers.sort((a,b) => a.name.localeCompare(b.name)).forEach(u => userSelect.add(new Option(u.name, u.id)));
+    } else {
+      console.warn('No users after filtering', { total: users.length, whitelist: whitelistedUserIds });
+      showStatusMessage(
+        "No whitelisted users available. Please check your user whitelist configuration.",
+        'error'
+      );
+      userSelect.disabled = true;
+    }
+  } catch (e) {
+    console.error('populateDropdowns failed', e);
+    showStatusMessage(`Error loading data: ${escapeHTML(e.message)}`, 'error');
+    document.getElementById('debug').style.display = 'block';
+  }
+}
     }
 
     function toggleCreateButton() {
