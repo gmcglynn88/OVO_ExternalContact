@@ -179,6 +179,7 @@
             provider: 'QualityForm',
             direction: 'INBOUND',
             fromName: 'External Work',
+            subject: externalReference ? `External Work - ${externalReference}` : 'External Work Item',
             attributes: externalReference ? { 'External Link': externalReference } : {}
           })
         });
@@ -215,51 +216,13 @@
           }
         } else {
           console.warn('No ACD participant found');
+          throw new Error('Could not find participant to assign');
         }
 
         // 4) Wait for assignment to process
         await new Promise(resolve => setTimeout(resolve, 1000));
 
-        // 5) Create external contact with communicationId (required field)
-        if (externalReference) {
-          try {
-            console.log('Creating external contact...');
-            const contact = await apiFetch(`${API_BASE}/api/v2/externalcontacts/contacts`, {
-              method:'POST',
-              body: JSON.stringify({
-                firstName: 'External',
-                lastName: externalReference || 'Work Item',
-                notes: [`Ref: ${externalReference}`],
-                addresses: [], 
-                phoneNumbers: [], 
-                emailAddresses: [],
-                // Create a dummy communication entry as required
-                externalOrganization: {
-                  name: 'External Work Organization'
-                }
-              })
-            });
-            
-            console.log('Created contact:', contact.id);
-            
-            // Link contact to conversation with communicationId
-            await apiFetch(`${API_BASE}/api/v2/externalcontacts/conversations`, {
-              method:'POST',
-              body: JSON.stringify({
-                conversationId: conversationId,
-                externalContactId: contact.id,
-                // Create a communication entry as required
-                communicationId: `${conversationId}-external`,
-                sessionId: conversationId
-              })
-            });
-            console.log('External contact linked');
-          } catch (e) {
-            console.warn('External contact creation/link failed (non-blocking)', e);
-          }
-        }
-
-        // 6) Disconnect the conversation
+        // 5) Disconnect the conversation
         console.log('Disconnecting conversation...');
         await apiFetch(`${API_BASE}/api/v2/conversations/emails/${conversationId}`, {
           method:'PATCH',
@@ -270,7 +233,7 @@
         const queueName = getSelectedText('queueSelect');
         const userName  = getSelectedText('userSelect');
         showStatusMessage(
-          `Interaction for <b>${escapeHTML(userName)}</b> in <b>${escapeHTML(queueName)}</b> created and stored (Performance → Workspace → Interactions).`,
+          `Interaction for <b>${escapeHTML(userName)}</b> in <b>${escapeHTML(queueName)}</b> created and stored in <b>Performance &gt; Workspace &gt; Interactions</b>.`,
           'success'
         );
       } catch (e) {
