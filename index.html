@@ -185,7 +185,7 @@
           throw new Error(`Error assigning user: ${assignResponse.status} ${assignResponse.statusText}`);
         }
 
-        const disconnectResponse = await fetch(`https://https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}`, {
+        const disconnectResponse = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}`, {
           method: 'PATCH',
           headers: {
             'Authorization': `Bearer ${token}`,
