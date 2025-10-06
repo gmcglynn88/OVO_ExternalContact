@@ -1,40 +1,70 @@
 <!DOCTYPE html>
-<html lang="en-GB">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>External Work Creation</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; padding: 20px; }
-    #logo-container { text-align: center; margin-bottom: 20px; }
-    #logo { width: 300px; }
-    label { margin-top: 10px; display: block; font-weight: bold; }
-    select, input, button { margin-top: 5px; padding: 8px; width: 100%; max-width: 380px; }
-    #statusMessage { margin-top: 16px; }
+    :root { --primary-color:#63AB8F; --primary-hover:#4D8F77; --border-color:#e0e0e0; --shadow:0 2px 8px rgba(0,0,0,.1); }
+    body{font-family:'Aptos','Segoe UI',system-ui,-apple-system,sans-serif;background:#f9f9f9;margin:0;padding:2rem;max-width:600px;margin-inline:auto;color:#333;line-height:1.6}
+    .card{background:#fff;border-radius:8px;box-shadow:var(--shadow);padding:2rem;margin-top:2rem}
+    .logo-container{text-align:center;margin-bottom:1.5rem}
+    #logo{max-width:180px;height:auto;margin-bottom:1rem}
+    h1{color:var(--primary-color);font-weight:600;margin-bottom:1.5rem;font-size:1.8rem;text-align:center}
+    label{display:block;margin:1.2rem 0 .4rem;font-weight:500;color:#555}
+    select,input{width:100%;padding:.8rem;border:1px solid var(--border-color);border-radius:4px;font:inherit;transition:border .2s}
+    select:focus,input:focus{outline:none;border-color:var(--primary-color);box-shadow:0 0 0 2px rgba(99,171,143,.2)}
+    button{width:100%;background:var(--primary-color);color:#fff;border:none;padding:.9rem;font-size:1rem;font-weight:500;border-radius:4px;cursor:pointer;transition:background .2s;margin-top:2rem;text-transform:uppercase;letter-spacing:.5px}
+    button:hover{background:var(--primary-hover)}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    #statusMessage{margin-top:1.5rem;padding:1rem;border-radius:4px;background:#f5f5f5;display:none}
+    .success{color:#2e7d32;border-left:4px solid #4caf50;padding-left:1rem}
+    .error{color:#c62828;border-left:4px solid #f44336;padding-left:1rem}
+    .loader{display:none;text-align:center;margin:1rem 0}
+    .spinner{border:3px solid rgba(0,0,0,.1);border-top:3px solid var(--primary-color);border-radius:50%;width:20px;height:20px;animation:spin 1s linear infinite;display:inline-block;vertical-align:middle;margin-right:8px}
+    @keyframes spin{to{transform:rotate(360deg)}}
   </style>
 </head>
 <body>
-  <div id="logo-container">
-    <img id="logo" src="https://raw.githubusercontent.com/gmcglynn88/ExternalWorkCreation/main/Consultinglogo.png" alt="Company Logo">
+  <div class="card">
+    <div class="logo-container">
+      <img id="logo" src="https://raw.githubusercontent.com/gmcglynn88/ExternalWorkCreation/main/Consultinglogo.png" alt="Company Logo">
+    </div>
+    <h1>External Work Creation</h1>
+
+    <label for="queueSelect">Select Queue:</label>
+    <select id="queueSelect"></select>
+
+    <label for="userSelect">Select User:</label>
+    <select id="userSelect"></select>
+
+    <label for="externalReference">External Reference:</label>
+    <input type="text" id="externalReference" placeholder="Enter external reference (optional)">
+
+    <div class="loader" id="loader"><div class="spinner"></div><span>Creating interaction...</span></div>
+    <button id="createInteractionBtn">Create Proxy Interaction</button>
+    <div id="statusMessage"></div>
   </div>
 
-  <h1>External Work Creation</h1>
-
-  <label for="queueSelect">Select Queue:</label>
-  <select id="queueSelect"></select>
-
-  <label for="userSelect">Select User:</label>
-  <select id="userSelect"></select>
-
-  <label for="externalReference">External Reference:</label>
-  <input type="text" id="externalReference" placeholder="Enter external reference (optional)">
-
-  <button id="createInteractionBtn">Create Proxy Interaction</button>
-
-  <div id="statusMessage" aria-live="polite"></div>
+  <!-- Debug panel -->
+  <div id="debug" style="font:12px/1.4 system-ui; background:#fff3cd; border:1px solid #ffeeba; padding:8px; margin:12px auto; max-width:600px; display:none">
+    <div><b>Whitelisted queues:</b> <span id="dbgQueues">0</span></div>
+    <div><b>Whitelisted users:</b> <span id="dbgUsers">0</span></div>
+    <div><b>Resolved queue names:</b> <span id="dbgQueuesFiltered">0</span></div>
+    <div><b>Resolved user names:</b> <span id="dbgUsersFiltered">0</span></div>
+  </div>
 
   <script>
-    // ---------- WHITELISTS ----------
+    const clientId = 'f2a0fa16-33cb-480b-a4ef-4766812dfb81';
+
+    function getExactRedirectUri(){
+      return `${location.origin}${location.pathname}`; // exact page URL incl. trailing slash
+    }
+    const redirectUri = getExactRedirectUri();
+    const oauthUrl = `https://login.euw2.pure.cloud/oauth/authorize?client_id=${clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    let accessToken = null;
+
+    // Strict whitelist: we ONLY resolve these IDs; no pagination, no global lists.
     const whitelistedUserIds = [
       'fa677b42-4aff-45af-b7e7-749418788b88',
       '206a7f52-4f89-446f-afbf-ac879147a7ad',
@@ -51,63 +81,59 @@
       '4a6f26c7-2b69-4c34-99e2-e156230ec2bd'
     ];
 
-    // ---------- OAUTH (LOGIN domain; region EUW2) ----------
-    const clientId = 'f2a0fa16-33cb-480b-a4ef-4766812dfb81';
-    const redirectUri = 'https://gmcglynn88.github.io/OVO_ExternalContact/';
-    const responseType = 'token';
-    const oauthUrl =
-      `https://login.euw2.pure.cloud/oauth/authorize?client_id=${clientId}` +
-      `&response_type=${responseType}&redirect_uri=${encodeURIComponent(redirectUri)}`;
-
+    // ----- Boot -----
     document.addEventListener('DOMContentLoaded', () => {
       const hash = window.location.hash.substring(1);
       const params = new URLSearchParams(hash);
-      const token = params.get('access_token');
-
-      // Surface any OAuth errors (handy when a redirect URI is off by a whisker)
-      const oauthError = params.get('error') || params.get('gc_error');
-      const oauthDesc  = params.get('error_description') || params.get('gc_error_description');
-      if (oauthError) {
-        setStatus(`OAuth error: ${oauthError}${oauthDesc ? ' — ' + oauthDesc : ''}`, false);
-        return;
-      }
-
-      if (!token) {
-        window.location.href = oauthUrl;
-        return;
-      }
-      initializeApp(token);
+      accessToken = params.get('access_token');
+      if (!accessToken) window.location.href = oauthUrl;
+      else initializeApp();
     });
 
-    // ---------- UTILITIES ----------
-    function setStatus(msg, ok = null) {
-      const el = document.getElementById('statusMessage');
-      if (ok === true) el.style.color = 'green';
-      else if (ok === false) el.style.color = 'crimson';
-      else el.style.color = 'inherit';
-      el.innerText = msg;
+    async function initializeApp() {
+      await populateDropdownsWhitelistOnly();
+      addSelectListeners();
+      document.getElementById('createInteractionBtn').addEventListener('click', createInteraction);
+      toggleCreateButton();
     }
 
-    // Polite fetch with exponential backoff and Retry-After support
-    async function fetchWithBackoff(url, options = {}, { retries = 4, baseDelay = 600 } = {}) {
-      let attempt = 0;
-      while (true) {
-        const res = await fetch(url, options);
-        if (res.ok) return res;
+    function addSelectListeners(){
+      ['queueSelect','userSelect'].forEach(id => {
+        document.getElementById(id).addEventListener('change', toggleCreateButton);
+      });
+    }
 
-        const status = res.status;
-        if ((status === 429 || (status >= 500 && status < 600)) && attempt < retries) {
-          const retryAfter = res.headers.get('Retry-After');
-          const delay = retryAfter ? parseInt(retryAfter, 10) * 1000 : baseDelay * Math.pow(2, attempt);
-          await new Promise(r => setTimeout(r, delay));
-          attempt++;
-          continue;
+    function toggleCreateButton() {
+      const btn = document.getElementById('createInteractionBtn');
+      const qs = document.getElementById('queueSelect');
+      const us = document.getElementById('userSelect');
+      btn.disabled = !(qs.value && us.value && !qs.disabled && !us.disabled);
+    }
+
+    // ---------- Fetch helper with auth ----------
+    async function apiFetch(url, options = {}) {
+      const res = await fetch(url, {
+        ...options,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          ...(options.headers || {})
         }
-        return res;
+      });
+      if (res.status === 401) {
+        window.location.href = oauthUrl;
+        throw new Error('Unauthorised (401) — redirecting to sign in.');
       }
+      const text = await res.text();
+      if (!res.ok) {
+        let details = '';
+        try { const body = JSON.parse(text || '{}'); details = body.message || body.error || text; } catch { details = text; }
+        throw new Error(`${res.status} ${res.statusText}${details ? ` — ${details}` : ''}`);
+      }
+      return text ? JSON.parse(text) : null;
     }
 
-    // Limit concurrency so we never stampede the API
+    // ---------- Limited concurrency resolver for whitelist ----------
     async function limitedMap(ids, fetcher, limit = 3) {
       const results = {};
       let i = 0;
@@ -118,7 +144,7 @@
             results[id] = await fetcher(id);
           } catch (e) {
             console.warn('Lookup failed for', id, e);
-            results[id] = null; // fall back to showing the ID
+            results[id] = null; // fallback to ID shown in dropdown
           }
         }
       }
@@ -126,154 +152,188 @@
       return results;
     }
 
-    // ---------- RESOLVE ONLY WHITELISTED IDS ----------
-    async function resolveNames(token) {
-      const headers = { 'Authorization': `Bearer ${token}` };
-
-      // Cache between reloads to avoid re-hitting the API
+    async function resolveWhitelistNames() {
+      // cache in-session to avoid repeat lookups on refresh
       const cached = sessionStorage.getItem('nameCache');
       const nameCache = cached ? JSON.parse(cached) : { users: {}, queues: {} };
 
       const usersToFetch = whitelistedUserIds.filter(id => !nameCache.users[id]);
       const queuesToFetch = whitelistedQueueIds.filter(id => !nameCache.queues[id]);
 
+      // Update debug: whitelisted counts
+      showDebugCounts({ q: whitelistedQueueIds.length, u: whitelistedUserIds.length });
+
       const [userNames, queueNames] = await Promise.all([
         limitedMap(usersToFetch, async (id) => {
-          const res = await fetchWithBackoff(
-            `https://api.euw2.pure.cloud/api/v2/users/${id}`,
-            { headers }
-          );
-          if (!res.ok) throw new Error(`users/${id} -> ${res.status}`);
-          const u = await res.json();
-          return u.name || id;
+          const u = await apiFetch(`https://api.euw2.pure.cloud/api/v2/users/${id}`);
+          return u?.name || id;
         }),
         limitedMap(queuesToFetch, async (id) => {
-          const res = await fetchWithBackoff(
-            `https://api.euw2.pure.cloud/api/v2/routing/queues/${id}`,
-            { headers }
-          );
-          if (!res.ok) throw new Error(`queues/${id} -> ${res.status}`);
-          const q = await res.json();
-          return q.name || id;
+          const q = await apiFetch(`https://api.euw2.pure.cloud/api/v2/routing/queues/${id}`);
+          return q?.name || id;
         })
       ]);
 
       Object.assign(nameCache.users, userNames);
       Object.assign(nameCache.queues, queueNames);
       sessionStorage.setItem('nameCache', JSON.stringify(nameCache));
+
+      // Update debug: resolved counts
+      showDebugCounts({ qf: Object.keys(nameCache.queues).length, uf: Object.keys(nameCache.users).length });
       return nameCache;
     }
 
-    // ---------- APP INIT ----------
-    async function initializeApp(token) {
-      setStatus('Loading allowed users & queues…');
-      const cache = await resolveNames(token);
+    async function populateDropdownsWhitelistOnly() {
+      try {
+        const cache = await resolveWhitelistNames();
 
-      // Populate dropdowns strictly from the whitelists
-      const qSel = document.getElementById('queueSelect');
-      qSel.innerHTML = '';
-      whitelistedQueueIds.forEach(id => {
-        const opt = document.createElement('option');
-        opt.value = id;
-        opt.text = cache.queues[id] || id;
-        qSel.add(opt);
-      });
+        const queueSelect = document.getElementById('queueSelect');
+        const userSelect  = document.getElementById('userSelect');
 
-      const uSel = document.getElementById('userSelect');
-      uSel.innerHTML = '';
-      whitelistedUserIds.forEach(id => {
-        const opt = document.createElement('option');
-        opt.value = id;
-        opt.text = cache.users[id] || id;
-        uSel.add(opt);
-      });
+        addPlaceholder(queueSelect, "Select a queue");
+        addPlaceholder(userSelect,  "Select a user");
 
-      setStatus('');
-      document.getElementById('createInteractionBtn')
-        .addEventListener('click', () => createInteraction(token));
+        whitelistedQueueIds.forEach(id => queueSelect.add(new Option(cache.queues[id] || id, id)));
+        whitelistedUserIds
+          .map(id => ({ id, name: cache.users[id] || id }))
+          .sort((a,b) => a.name.localeCompare(b.name))
+          .forEach(u => userSelect.add(new Option(u.name, u.id)));
+
+        if (!whitelistedQueueIds.length) {
+          showStatusMessage(
+            "No queues in whitelist. Add a queue ID to <b>whitelistedQueueIds</b>.",
+            'error'
+          );
+          queueSelect.disabled = true;
+        }
+        if (!whitelistedUserIds.length) {
+          showStatusMessage(
+            "No users in whitelist. Add user IDs to <b>whitelistedUserIds</b>.",
+            'error'
+          );
+          userSelect.disabled = true;
+        }
+      } catch (e) {
+        console.error('populateDropdowns failed', e);
+        showStatusMessage(`Error loading whitelist entities: ${escapeHTML(e.message)}`, 'error');
+        document.getElementById('debug').style.display = 'block';
+      }
     }
 
-    // ---------- MAIN FLOW: create → details → assign → disconnect ----------
-    async function createInteraction(token) {
+    // ---------- Main flow ----------
+    async function createInteraction() {
       const queueId = document.getElementById('queueSelect').value;
-      const userId = document.getElementById('userSelect').value;
-      const externalReference = document.getElementById('externalReference').value;
+      const userId  = document.getElementById('userSelect').value;
+      const externalReference = (document.getElementById('externalReference').value || '').trim();
+
+      if (!queueId || !userId) return showStatusMessage('Please select both a queue and a user', 'error');
+
+      clearStatus();
+      showLoader(true);
+      setButtonDisabled(true);
 
       try {
-        setStatus('Creating interaction…');
-
         // 1) Create email conversation
-        const createRes = await fetchWithBackoff(
-          'https://api.euw2.pure.cloud/api/v2/conversations/emails',
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              queueId,
-              provider: 'QualityForm',
-              direction: 'INBOUND',
-              fromName: 'External Work',
-              attributes: { 'External Link': externalReference }
-            })
-          }
-        );
-        if (!createRes.ok) throw new Error(`create -> ${createRes.status} ${createRes.statusText}`);
-        const interaction = await createRes.json();
+        const interaction = await apiFetch('https://api.euw2.pure.cloud/api/v2/conversations/emails', {
+          method:'POST',
+          body: JSON.stringify({
+            queueId, provider:'QualityForm', direction:'INBOUND', fromName:'External Work',
+            attributes: { 'External Link': externalReference }
+          })
+        });
         const conversationId = interaction.id;
 
-        setStatus('Fetching conversation details…');
-
-        // 2) Get conversation details; find ACD participant robustly
-        const detailsRes = await fetch(
-          `https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`,
-          { headers: { 'Authorization': `Bearer ${token}` } }
-        );
-        if (!detailsRes.ok) throw new Error(`details -> ${detailsRes.status} ${detailsRes.statusText}`);
-        const details = await detailsRes.json();
-        const acd = (details.participants || []).find(p => p.purpose === 'acd') || details.participants?.[1];
-        if (!acd) throw new Error('details -> ACD participant not found');
-        const participantId = acd.id;
-
-        setStatus('Assigning to user…');
-
-        // 3) Assign to user
-        const assignRes = await fetchWithBackoff(
-          `https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}/participants/${participantId}/replace`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
+        // 2) Try assign endpoint first
+        try {
+          await apiFetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/assign`, {
+            method:'POST',
             body: JSON.stringify({ userId })
+          });
+        } catch (assignErr) {
+          console.warn('Manual assign failed; falling back to participant PATCH', assignErr);
+          const details = await apiFetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`);
+          const p = (details.participants || []).find(x => ['agent','user','acd'].includes((x.purpose || '').toLowerCase()));
+          if (p) {
+            await apiFetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}/participants/${p.id}`, {
+              method:'PATCH',
+              body: JSON.stringify({ userId })
+            });
+          } else {
+            console.warn('No suitable participant found to patch.');
           }
-        );
-        if (!assignRes.ok) throw new Error(`assign -> ${assignRes.status} ${assignRes.statusText}`);
+        }
 
-        setStatus('Disconnecting conversation…');
+        // 3) Best-effort: create/link external contact
+        try {
+          const contact = await apiFetch('https://api.euw2.pure.cloud/api/v2/externalcontacts/contacts', {
+            method:'POST',
+            body: JSON.stringify({
+              firstName: 'External',
+              lastName: externalReference || 'Work Item',
+              addresses:[], phoneNumbers:[], emailAddresses:[],
+              notes: externalReference ? [`Ref: ${externalReference}`] : []
+            })
+          });
 
-        // 4) Disconnect conversation (single https!)
-        const disconnectRes = await fetchWithBackoff(
-          `https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}`,
-          {
-            method: 'PATCH',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ state: 'disconnected' })
-          }
-        );
-        if (!disconnectRes.ok) throw new Error(`disconnect -> ${disconnectRes.status} ${disconnectRes.statusText}`);
+          await apiFetch(`https://api.euw2.pure.cloud/api/v2/externalcontacts/conversations/${conversationId}`, {
+            method:'PUT',
+            body: JSON.stringify({ externalContactId: contact.id })
+          });
+        } catch (e) {
+          console.warn('External contact creation/link failed', e);
+        }
 
-        setStatus('Interaction created and assigned successfully!', true);
-      } catch (err) {
-        console.error(err);
-        setStatus(`Error: ${err.message}`, false);
+        // 4) Disconnect the email to store it
+        await apiFetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}`, {
+          method:'PATCH',
+          body: JSON.stringify({ state:'disconnected' })
+        });
+
+        const queueName = getSelectedText('queueSelect');
+        const userName  = getSelectedText('userSelect');
+        showStatusMessage(`Interaction for <b>${escapeHTML(userName)}</b> in <b>${escapeHTML(queueName)}</b> created and stored in <b>Performance &gt; Workspace &gt; Interactions</b>.`);
+      } catch (e) {
+        console.error(e);
+        showStatusMessage(`Error creating interaction: ${escapeHTML(e.message)}`, 'error');
+      } finally {
+        showLoader(false);
+        setButtonDisabled(false);
       }
+    }
+
+    // ---------- UI helpers ----------
+    function addPlaceholder(selectEl, label){
+      const opt = new Option(label, "");
+      opt.disabled = true; opt.selected = true; opt.hidden = true;
+      selectEl.add(opt);
+    }
+
+    function getSelectedText(selectId){
+      const sel = document.getElementById(selectId);
+      return sel.options[sel.selectedIndex]?.text || '';
+    }
+
+    function setButtonDisabled(disabled) {
+      const btn = document.getElementById('createInteractionBtn');
+      btn.disabled = disabled;
+    }
+
+    function showLoader(show){ document.getElementById('loader').style.display = show ? 'block' : 'none'; }
+    function clearStatus(){ const el = document.getElementById('statusMessage'); el.style.display='none'; el.textContent=''; el.className=''; }
+    function showStatusMessage(msg, type='success'){ const el = document.getElementById('statusMessage'); el.style.display='block'; el.className = type; el.innerHTML = msg; }
+
+    function showDebugCounts({ q, u, qf, uf }){
+      const dbg = document.getElementById('debug');
+      if (!dbg) return;
+      if (typeof q  !== 'undefined') document.getElementById('dbgQueues').textContent = q;
+      if (typeof u  !== 'undefined') document.getElementById('dbgUsers').textContent = u;
+      if (typeof qf !== 'undefined') document.getElementById('dbgQueuesFiltered').textContent = qf;
+      if (typeof uf !== 'undefined') document.getElementById('dbgUsersFiltered').textContent = uf;
+      dbg.style.display = 'block';
+    }
+
+    function escapeHTML(str){
+      return (str || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     }
   </script>
 </body>
