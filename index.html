@@ -1,38 +1,16 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GB">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>External Work Creation</title>
-  <link href="https://fonts.googleapis.com/css2?family=Proxima+Nova&display=swap" rel="stylesheet">
   <style>
-    body {
-      font-family: 'Proxima Nova', Arial, sans-serif;
-      margin: 20px;
-      padding: 20px;
-    }
-    #logo-container {
-      text-align: center;
-      margin-bottom: 20px;
-    }
-    #logo {
-      width: 300px;
-    }
-    label {
-      margin-top: 10px;
-      display: block;
-      font-weight: bold;
-    }
-    select, input, button {
-      margin-top: 5px;
-      padding: 8px;
-      width: 100%;
-      max-width: 300px;
-    }
-    #statusMessage {
-      margin-top: 20px;
-      color: green;
-    }
+    body { font-family: Arial, sans-serif; margin: 20px; padding: 20px; }
+    #logo-container { text-align: center; margin-bottom: 20px; }
+    #logo { width: 300px; }
+    label { margin-top: 10px; display: block; font-weight: bold; }
+    select, input, button { margin-top: 5px; padding: 8px; width: 100%; max-width: 380px; }
+    #statusMessage { margin-top: 16px; }
   </style>
 </head>
 <body>
@@ -53,158 +31,248 @@
 
   <button id="createInteractionBtn">Create Proxy Interaction</button>
 
-  <div id="statusMessage"></div>
+  <div id="statusMessage" aria-live="polite"></div>
 
   <script>
-const clientId = 'f2a0fa16-33cb-480b-a4ef-4766812dfb81';
-const redirectUri = 'https://gmcglynn88.github.io/OVO_ExternalContact/';
-const responseType = 'token';
-const oauthUrl =
-  `https://login.euw2.pure.cloud/oauth/authorize?client_id=${clientId}` +
-  `&response_type=${responseType}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    // ---------- WHITELISTS ----------
+    const whitelistedUserIds = [
+      'fa677b42-4aff-45af-b7e7-749418788b88',
+      '206a7f52-4f89-446f-afbf-ac879147a7ad',
+      '14ecd5fc-30f9-4214-809f-93771752bfb6',
+      '79148e85-0da8-4f3e-9cdf-1ce4d832f5a4',
+      '4ec6fd9a-e335-4d96-9504-05a1fbaa46a9',
+      '207b29f5-8895-429c-b3bb-4879b41d8718',
+      '4cd8cbf4-a8a1-4b49-9769-825d1cfc9e08',
+      '6e917925-2cff-49b5-a730-55db79445280',
+      'fed76596-cfa5-4fda-bb15-49985065480e',
+      '660c4154-ba9b-4e84-90ec-c9c9b409ac41'
+    ];
+    const whitelistedQueueIds = [
+      '4a6f26c7-2b69-4c34-99e2-e156230ec2bd'
+    ];
+
+    // ---------- OAUTH (LOGIN domain; region EUW2) ----------
+    const clientId = 'f2a0fa16-33cb-480b-a4ef-4766812dfb81';
+    const redirectUri = 'https://gmcglynn88.github.io/OVO_ExternalContact/';
+    const responseType = 'token';
+    const oauthUrl =
+      `https://login.euw2.pure.cloud/oauth/authorize?client_id=${clientId}` +
+      `&response_type=${responseType}&redirect_uri=${encodeURIComponent(redirectUri)}`;
 
     document.addEventListener('DOMContentLoaded', () => {
       const hash = window.location.hash.substring(1);
       const params = new URLSearchParams(hash);
       const token = params.get('access_token');
 
+      // Surface any OAuth errors (handy when a redirect URI is off by a whisker)
+      const oauthError = params.get('error') || params.get('gc_error');
+      const oauthDesc  = params.get('error_description') || params.get('gc_error_description');
+      if (oauthError) {
+        setStatus(`OAuth error: ${oauthError}${oauthDesc ? ' — ' + oauthDesc : ''}`, false);
+        return;
+      }
+
       if (!token) {
         window.location.href = oauthUrl;
-      } else {
-        initializeApp(token);
+        return;
       }
+      initializeApp(token);
     });
 
-    function initializeApp(token) {
-      populateDropdowns(token);
+    // ---------- UTILITIES ----------
+    function setStatus(msg, ok = null) {
+      const el = document.getElementById('statusMessage');
+      if (ok === true) el.style.color = 'green';
+      else if (ok === false) el.style.color = 'crimson';
+      else el.style.color = 'inherit';
+      el.innerText = msg;
+    }
 
-      document.getElementById('createInteractionBtn').addEventListener('click', () => {
-        createInteraction(token);
+    // Polite fetch with exponential backoff and Retry-After support
+    async function fetchWithBackoff(url, options = {}, { retries = 4, baseDelay = 600 } = {}) {
+      let attempt = 0;
+      while (true) {
+        const res = await fetch(url, options);
+        if (res.ok) return res;
+
+        const status = res.status;
+        if ((status === 429 || (status >= 500 && status < 600)) && attempt < retries) {
+          const retryAfter = res.headers.get('Retry-After');
+          const delay = retryAfter ? parseInt(retryAfter, 10) * 1000 : baseDelay * Math.pow(2, attempt);
+          await new Promise(r => setTimeout(r, delay));
+          attempt++;
+          continue;
+        }
+        return res;
+      }
+    }
+
+    // Limit concurrency so we never stampede the API
+    async function limitedMap(ids, fetcher, limit = 3) {
+      const results = {};
+      let i = 0;
+      async function worker() {
+        while (i < ids.length) {
+          const id = ids[i++];
+          try {
+            results[id] = await fetcher(id);
+          } catch (e) {
+            console.warn('Lookup failed for', id, e);
+            results[id] = null; // fall back to showing the ID
+          }
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(limit, ids.length) }, worker));
+      return results;
+    }
+
+    // ---------- RESOLVE ONLY WHITELISTED IDS ----------
+    async function resolveNames(token) {
+      const headers = { 'Authorization': `Bearer ${token}` };
+
+      // Cache between reloads to avoid re-hitting the API
+      const cached = sessionStorage.getItem('nameCache');
+      const nameCache = cached ? JSON.parse(cached) : { users: {}, queues: {} };
+
+      const usersToFetch = whitelistedUserIds.filter(id => !nameCache.users[id]);
+      const queuesToFetch = whitelistedQueueIds.filter(id => !nameCache.queues[id]);
+
+      const [userNames, queueNames] = await Promise.all([
+        limitedMap(usersToFetch, async (id) => {
+          const res = await fetchWithBackoff(
+            `https://api.euw2.pure.cloud/api/v2/users/${id}`,
+            { headers }
+          );
+          if (!res.ok) throw new Error(`users/${id} -> ${res.status}`);
+          const u = await res.json();
+          return u.name || id;
+        }),
+        limitedMap(queuesToFetch, async (id) => {
+          const res = await fetchWithBackoff(
+            `https://api.euw2.pure.cloud/api/v2/routing/queues/${id}`,
+            { headers }
+          );
+          if (!res.ok) throw new Error(`queues/${id} -> ${res.status}`);
+          const q = await res.json();
+          return q.name || id;
+        })
+      ]);
+
+      Object.assign(nameCache.users, userNames);
+      Object.assign(nameCache.queues, queueNames);
+      sessionStorage.setItem('nameCache', JSON.stringify(nameCache));
+      return nameCache;
+    }
+
+    // ---------- APP INIT ----------
+    async function initializeApp(token) {
+      setStatus('Loading allowed users & queues…');
+      const cache = await resolveNames(token);
+
+      // Populate dropdowns strictly from the whitelists
+      const qSel = document.getElementById('queueSelect');
+      qSel.innerHTML = '';
+      whitelistedQueueIds.forEach(id => {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.text = cache.queues[id] || id;
+        qSel.add(opt);
       });
+
+      const uSel = document.getElementById('userSelect');
+      uSel.innerHTML = '';
+      whitelistedUserIds.forEach(id => {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.text = cache.users[id] || id;
+        uSel.add(opt);
+      });
+
+      setStatus('');
+      document.getElementById('createInteractionBtn')
+        .addEventListener('click', () => createInteraction(token));
     }
 
-    async function populateDropdowns(token) {
-      try {
-        const queues = await fetchAllPages('https://api.euw2.pure.cloud/api/v2/routing/queues', token);
-        const users = await fetchAllPages('https://api.euw2.pure.cloud/api/v2/users', token);
-
-        const queueSelect = document.getElementById('queueSelect');
-        queues.forEach(queue => {
-          const option = document.createElement('option');
-          option.value = queue.id;
-          option.text = queue.name;
-          queueSelect.add(option);
-        });
-
-        const userSelect = document.getElementById('userSelect');
-        users.forEach(user => {
-          const option = document.createElement('option');
-          option.value = user.id;
-          option.text = user.name;
-          userSelect.add(option);
-        });
-
-      } catch (error) {
-        console.error('Error populating dropdowns:', error);
-        document.getElementById('statusMessage').innerText = `Error loading data: ${error.message}`;
-      }
-    }
-
-    async function fetchAllPages(url, token) {
-      let allItems = [];
-      let pageNumber = 1;
-      let hasMorePages = true;
-
-      while (hasMorePages) {
-        const response = await fetch(`${url}?pageNumber=${pageNumber}&pageSize=25`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (!response.ok) {
-          throw new Error(`Error fetching data: ${response.status} ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        allItems = allItems.concat(data.entities);
-
-        if (data.pageCount > pageNumber) {
-          pageNumber++;
-        } else {
-          hasMorePages = false;
-        }
-      }
-
-      return allItems;
-    }
-
+    // ---------- MAIN FLOW: create → details → assign → disconnect ----------
     async function createInteraction(token) {
       const queueId = document.getElementById('queueSelect').value;
       const userId = document.getElementById('userSelect').value;
       const externalReference = document.getElementById('externalReference').value;
 
       try {
-        const interactionResponse = await fetch('https://api.euw2.pure.cloud/api/v2/conversations/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            queueId: queueId,
-            provider: 'QualityForm',
-            direction: 'INBOUND',
-            fromName: 'External Work',
-            attributes: { 'External Link': externalReference }
-          })
-        });
+        setStatus('Creating interaction…');
 
-        if (!interactionResponse.ok) {
-          throw new Error(`Error creating interaction: ${interactionResponse.status} ${interactionResponse.statusText}`);
-        }
-
-        const interaction = await interactionResponse.json();
+        // 1) Create email conversation
+        const createRes = await fetchWithBackoff(
+          'https://api.euw2.pure.cloud/api/v2/conversations/emails',
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              queueId,
+              provider: 'QualityForm',
+              direction: 'INBOUND',
+              fromName: 'External Work',
+              attributes: { 'External Link': externalReference }
+            })
+          }
+        );
+        if (!createRes.ok) throw new Error(`create -> ${createRes.status} ${createRes.statusText}`);
+        const interaction = await createRes.json();
         const conversationId = interaction.id;
 
-        const conversationDetailsResponse = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!conversationDetailsResponse.ok) {
-          throw new Error(`Error fetching conversation details: ${conversationDetailsResponse.status} ${conversationDetailsResponse.statusText}`);
-        }
-        const conversationDetails = await conversationDetailsResponse.json();
-        const participantId = conversationDetails.participants[1].id;
+        setStatus('Fetching conversation details…');
 
-        const assignResponse = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}/participants/${participantId}/replace`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ userId: userId })
-        });
+        // 2) Get conversation details; find ACD participant robustly
+        const detailsRes = await fetch(
+          `https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`,
+          { headers: { 'Authorization': `Bearer ${token}` } }
+        );
+        if (!detailsRes.ok) throw new Error(`details -> ${detailsRes.status} ${detailsRes.statusText}`);
+        const details = await detailsRes.json();
+        const acd = (details.participants || []).find(p => p.purpose === 'acd') || details.participants?.[1];
+        if (!acd) throw new Error('details -> ACD participant not found');
+        const participantId = acd.id;
 
-        if (!assignResponse.ok) {
-          throw new Error(`Error assigning user: ${assignResponse.status} ${assignResponse.statusText}`);
-        }
+        setStatus('Assigning to user…');
 
-        const disconnectResponse = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}`, {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ state: 'disconnected' })
-        });
+        // 3) Assign to user
+        const assignRes = await fetchWithBackoff(
+          `https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}/participants/${participantId}/replace`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ userId })
+          }
+        );
+        if (!assignRes.ok) throw new Error(`assign -> ${assignRes.status} ${assignRes.statusText}`);
 
-        if (!disconnectResponse.ok) {
-          throw new Error(`Error disconnecting conversation: ${disconnectResponse.status} ${disconnectResponse.statusText}`);
-        }
+        setStatus('Disconnecting conversation…');
 
-        document.getElementById('statusMessage').innerText = 'Interaction created and assigned successfully!';
+        // 4) Disconnect conversation (single https!)
+        const disconnectRes = await fetchWithBackoff(
+          `https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}`,
+          {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ state: 'disconnected' })
+          }
+        );
+        if (!disconnectRes.ok) throw new Error(`disconnect -> ${disconnectRes.status} ${disconnectRes.statusText}`);
 
-      } catch (error) {
-        console.error('Error during interaction creation:', error);
-        document.getElementById('statusMessage').innerText = `Error: ${error.message}`;
+        setStatus('Interaction created and assigned successfully!', true);
+      } catch (err) {
+        console.error(err);
+        setStatus(`Error: ${err.message}`, false);
       }
     }
   </script>
