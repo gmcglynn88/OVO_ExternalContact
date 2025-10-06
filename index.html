@@ -33,6 +33,10 @@
       margin-top: 20px;
       color: green;
     }
+    .loading {
+      color: #666;
+      font-style: italic;
+    }
   </style>
 </head>
 <body>
@@ -43,10 +47,14 @@
   <h1>External Work Creation</h1>
 
   <label for="queueSelect">Select Queue:</label>
-  <select id="queueSelect"></select>
+  <select id="queueSelect">
+    <option value="">Loading queues...</option>
+  </select>
 
   <label for="userSelect">Select User:</label>
-  <select id="userSelect"></select>
+  <select id="userSelect">
+    <option value="">Loading users...</option>
+  </select>
 
   <label for="externalReference">External Reference:</label>
   <input type="text" id="externalReference" placeholder="Enter external reference (optional)">
@@ -60,6 +68,26 @@
     const redirectUri = 'https://gmcglynn88.github.io/OVO_ExternalContact/';
     const responseType = 'token';
     const oauthUrl = `https://api.euw2.pure.cloud/oauth/authorize?client_id=${clientId}&response_type=${responseType}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+
+    // Whitelist configuration
+    const USER_WHITELIST = [
+      'fa677b42-4aff-45af-b7e7-749418788b88',
+      '206a7f52-4f89-446f-afbf-ac879147a7ad',
+      '14ecd5fc-30f9-4214-809f-93771752bfb6',
+      '79148e85-0da8-4f3e-9cdf-1ce4d832f5a4',
+      '4ec6fd9a-e335-4d96-9504-05a1fbaa46a9',
+      '207b29f5-8895-429c-b3bb-4879b41d8718',
+      '4cd8cbf4-a8a1-4b49-9769-825d1cfc9e08',
+      '6e917925-2cff-49b5-a730-55db79445280',
+      'fed76596-cfa5-4fda-bb15-49985065480e',
+      '660c4154-ba9b-4e84-90ec-c9c9b409ac41',
+      '4a6f26c7-2b69-4c34-99e2-e156230ec2bd'
+    ];
+
+    // Queue whitelist - add your specific queue IDs here
+    const QUEUE_WHITELIST = [
+      '4a6f26c7-2b69-4c34-99e2-e156230ec2bd'
+    ];
 
     document.addEventListener('DOMContentLoaded', () => {
       const hash = window.location.hash.substring(1);
@@ -83,28 +111,100 @@
 
     async function populateDropdowns(token) {
       try {
-        const queues = await fetchAllPages('https://api.euw2.pure.cloud/api/v2/routing/queues', token);
-        const users = await fetchAllPages('https://api.euw2.pure.cloud/api/v2/users', token);
+        // Populate queues
+        await populateQueues(token);
+        
+        // Populate users
+        await populateUsers(token);
 
-        const queueSelect = document.getElementById('queueSelect');
+      } catch (error) {
+        console.error('Error populating dropdowns:', error);
+        document.getElementById('statusMessage').innerText = `Error loading data: ${error.message}`;
+      }
+    }
+
+    async function populateQueues(token) {
+      const queueSelect = document.getElementById('queueSelect');
+      
+      // If we have a queue whitelist, use it directly
+      if (QUEUE_WHITELIST.length > 0) {
+        queueSelect.innerHTML = '<option value="">Loading specific queues...</option>';
+        
+        // Fetch details for each whitelisted queue
+        const queuePromises = QUEUE_WHITELIST.map(queueId => 
+          fetch(`https://api.euw2.pure.cloud/api/v2/routing/queues/${queueId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          }).then(response => {
+            if (!response.ok) throw new Error(`Failed to fetch queue ${queueId}`);
+            return response.json();
+          })
+        );
+
+        try {
+          const queues = await Promise.all(queuePromises);
+          queueSelect.innerHTML = '<option value="">Select a queue</option>';
+          queues.forEach(queue => {
+            const option = document.createElement('option');
+            option.value = queue.id;
+            option.text = queue.name;
+            queueSelect.add(option);
+          });
+        } catch (error) {
+          console.error('Error fetching whitelisted queues:', error);
+          // Fallback to fetching all queues if whitelist fails
+          await fetchAllQueues(token, queueSelect);
+        }
+      } else {
+        // No queue whitelist, fetch all queues with pagination
+        await fetchAllQueues(token, queueSelect);
+      }
+    }
+
+    async function fetchAllQueues(token, queueSelect) {
+      queueSelect.innerHTML = '<option value="">Loading all queues...</option>';
+      
+      try {
+        const queues = await fetchAllPages('https://api.euw2.pure.cloud/api/v2/routing/queues', token);
+        queueSelect.innerHTML = '<option value="">Select a queue</option>';
         queues.forEach(queue => {
           const option = document.createElement('option');
           option.value = queue.id;
           option.text = queue.name;
           queueSelect.add(option);
         });
+      } catch (error) {
+        queueSelect.innerHTML = '<option value="">Error loading queues</option>';
+        throw error;
+      }
+    }
 
-        const userSelect = document.getElementById('userSelect');
+    async function populateUsers(token) {
+      const userSelect = document.getElementById('userSelect');
+      userSelect.innerHTML = '<option value="">Loading specific users...</option>';
+
+      // Fetch details for each whitelisted user
+      const userPromises = USER_WHITELIST.map(userId => 
+        fetch(`https://api.euw2.pure.cloud/api/v2/users/${userId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }).then(response => {
+          if (!response.ok) throw new Error(`Failed to fetch user ${userId}`);
+          return response.json();
+        })
+      );
+
+      try {
+        const users = await Promise.all(userPromises);
+        userSelect.innerHTML = '<option value="">Select a user</option>';
         users.forEach(user => {
           const option = document.createElement('option');
           option.value = user.id;
           option.text = user.name;
           userSelect.add(option);
         });
-
       } catch (error) {
-        console.error('Error populating dropdowns:', error);
-        document.getElementById('statusMessage').innerText = `Error loading data: ${error.message}`;
+        console.error('Error fetching whitelisted users:', error);
+        userSelect.innerHTML = '<option value="">Error loading users</option>';
+        throw error;
       }
     }
 
@@ -139,6 +239,12 @@
       const queueId = document.getElementById('queueSelect').value;
       const userId = document.getElementById('userSelect').value;
       const externalReference = document.getElementById('externalReference').value;
+
+      // Validation
+      if (!queueId || !userId) {
+        document.getElementById('statusMessage').innerText = 'Please select both a queue and a user.';
+        return;
+      }
 
       try {
         const interactionResponse = await fetch('https://api.euw2.pure.cloud/api/v2/conversations/emails', {
