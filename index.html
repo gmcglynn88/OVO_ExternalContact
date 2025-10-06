@@ -56,10 +56,12 @@
   <div id="statusMessage"></div>
 
   <script>
-    const clientId = 'f2a0fa16-33cb-480b-a4ef-4766812dfb81';
-    const redirectUri = 'https://gmcglynn88.github.io/OVO_ExternalContact/';
-    const responseType = 'token';
-    const oauthUrl = `https://api.euw2.pure.cloud/oauth/authorize?client_id=${clientId}&response_type=${responseType}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+const clientId = 'f2a0fa16-33cb-480b-a4ef-4766812dfb81';
+const redirectUri = 'https://gmcglynn88.github.io/OVO_ExternalContact/';
+const responseType = 'token';
+const oauthUrl =
+  `https://login.euw2.pure.cloud/oauth/authorize?client_id=${clientId}` +
+  `&response_type=${responseType}&redirect_uri=${encodeURIComponent(redirectUri)}`;
 
     document.addEventListener('DOMContentLoaded', () => {
       const hash = window.location.hash.substring(1);
