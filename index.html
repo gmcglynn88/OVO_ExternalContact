@@ -140,8 +140,8 @@
           </div>
           <div>
             <label for="userSelect">Select User:</label>
-            <select id="userSelect">
-              <option value="">Loading users...</option>
+            <select id="userSelect" disabled>
+              <option value="">Please select a queue first</option>
             </select>
           </div>
           <div>
@@ -163,10 +163,10 @@
         <h2 class="section-title">How to Use This Tool</h2>
 
         <p><strong>1. Choose a Queue</strong><br>
-        Select the queue where the proxy interaction will be created.</p>
+        Select the queue where the proxy interaction will be created. Users will automatically load from this queue.</p>
 
         <p><strong>2. Choose a User</strong><br>
-        Pick the agent who should be assigned the generated interaction.</p>
+        Pick an agent from the queue members who should be assigned the generated interaction.</p>
 
         <p><strong>3. Add an External Reference (Optional)</strong><br>
         Enter anything useful such as a case number or URL. Leave blank if not required.</p>
@@ -192,20 +192,7 @@
     // EUW2 OAuth URL - using the region-specific login endpoint
     const oauthUrl = `https://login.euw2.pure.cloud/oauth/authorize?client_id=${encodeURIComponent(clientId)}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=conversations:email:write%20routing:queue:view%20users:read%20routing:queue:read&prompt=none`;
 
-    // Whitelist configuration
-    const USER_WHITELIST = [
-      'fa677b42-4aff-45af-b7e7-749418788b88',
-      '206a7f52-4f89-446f-afbf-ac879147a7ad',
-      '14ecd5fc-30f9-4214-809f-93771752bfb6',
-      '79148e85-0da8-4f3e-9cdf-1ce4d832f5a4',
-      '4ec6fd9a-e335-4d96-9504-05a1fbaa46a9',
-      '207b29f5-8895-429c-b3bb-4879b41d8718',
-      '4cd8cbf4-a8a1-4b49-9769-825d1cfc9e08',
-      '6e917925-2cff-49b5-a730-55db79445280',
-      'fed76596-cfa5-4fda-bb15-49985065480e',
-      '660c4154-ba9b-4e84-90ec-c9c9b409ac41'
-    ];
-
+    // Queue whitelist - only this queue will be available
     const QUEUE_WHITELIST = [
       '4a6f26c7-2b69-4c34-99e2-e156230ec2bd'
     ];
@@ -328,12 +315,13 @@
 
     async function populateDropdowns() {
       try {
-        await Promise.all([
-          populateQueues(),
-          populateUsers()
-        ]);
+        // Only populate queues now. Users will be loaded when a queue is selected.
+        await populateQueues();
+        
+        // Add an event listener to the queue dropdown
+        document.getElementById('queueSelect').addEventListener('change', fetchQueueMembers);
       } catch (error) {
-        showMessage(`Error loading data: ${error.message}`, 'error');
+        showMessage(`Error loading queues: ${error.message}`, 'error');
       }
     }
 
@@ -395,59 +383,100 @@
       }
     }
 
-    async function populateUsers() {
+    async function fetchQueueMembers() {
+      const queueId = document.getElementById('queueSelect').value;
       const userSelect = document.getElementById('userSelect');
-      userSelect.innerHTML = '<option value="">Loading specific users...</option>';
-
-      // Fetch details for each whitelisted user
-      const userPromises = USER_WHITELIST.map(userId => 
-        fetch(`https://api.euw2.pure.cloud/api/v2/users/${userId}`, {
-          headers: { 
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          }
-        }).then(response => {
-          if (!response.ok) throw new Error(`Failed to fetch user ${userId}`);
-          return response.json();
-        })
-      );
-
+      
+      // Reset the user dropdown
+      userSelect.innerHTML = '<option value="">Select a user...</option>';
+      
+      if (!queueId) {
+        userSelect.disabled = true;
+        userSelect.innerHTML = '<option value="">Please select a queue first</option>';
+        return; // Do nothing if no queue is selected
+      }
+      
+      userSelect.disabled = true;
+      const originalLabel = userSelect.options[0].text;
+      userSelect.options[0].text = 'Loading members...';
+      
       try {
-        const users = await Promise.all(userPromises);
+        // Fetch members for the selected queue
+        const members = await fetchAllPages(`https://api.euw2.pure.cloud/api/v2/routing/queues/${queueId}/members`);
+        
+        // Clear and repopulate the user dropdown
         userSelect.innerHTML = '<option value="">Select a user</option>';
-        users.forEach(user => {
-          const option = document.createElement('option');
-          option.value = user.id;
-          option.text = user.name;
-          userSelect.add(option);
+        
+        // The API returns member entities. We need the user object inside each member.
+        members.forEach(member => {
+          // Check if the member has a 'user' property
+          if (member.user && member.user.id) {
+            const option = document.createElement('option');
+            option.value = member.user.id;
+            option.text = member.user.name;
+            userSelect.add(option);
+          }
         });
+        
+        if (userSelect.options.length === 1) {
+          userSelect.innerHTML = '<option value="">No members found in this queue</option>';
+          userSelect.disabled = true;
+        } else {
+          userSelect.disabled = false;
+        }
+        
       } catch (error) {
-        console.error('Error fetching whitelisted users:', error);
-        userSelect.innerHTML = '<option value="">Error loading users</option>';
-        throw error;
+        console.error('Error fetching queue members:', error);
+        userSelect.innerHTML = '<option value="">Error loading members</option>';
+        userSelect.disabled = true;
+        showMessage(`Could not load queue members: ${error.message}`, 'error');
       }
     }
 
     async function fetchAllPages(url) {
       let allItems = [];
       let pageNumber = 1;
+      let pageSize = 50; // Use a larger page size for queue members
       let hasMorePages = true;
 
       while (hasMorePages) {
-        const response = await fetch(`${url}?pageNumber=${pageNumber}&pageSize=25`, {
-          headers: { 
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
+        try {
+          const response = await fetch(`${url}?pageNumber=${pageNumber}&pageSize=${pageSize}`, {
+            headers: { 
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error(`Error fetching data: ${response.status} ${response.statusText}`);
           }
-        });
 
-        if (!response.ok) throw new Error(`Error fetching data: ${response.status} ${response.statusText}`);
-
-        const data = await response.json();
-        allItems = allItems.concat(data.entities || []);
-
-        if (data.pageCount > pageNumber) pageNumber++;
-        else hasMorePages = false;
+          const data = await response.json();
+          
+          // Handle different response structures
+          if (data.entities) {
+            allItems = allItems.concat(data.entities || []);
+            
+            // Check if we have more pages
+            if (data.pageCount && data.pageCount > pageNumber) {
+              pageNumber++;
+            } else {
+              hasMorePages = false;
+            }
+          } else if (Array.isArray(data)) {
+            // Some endpoints return arrays directly
+            allItems = allItems.concat(data);
+            hasMorePages = false;
+          } else {
+            // For endpoints without pagination info
+            allItems = allItems.concat(data.members || []);
+            hasMorePages = false;
+          }
+        } catch (error) {
+          console.error(`Error fetching page ${pageNumber}:`, error);
+          throw error;
+        }
       }
 
       return allItems;
