@@ -91,37 +91,29 @@
       display: block;
     }
     
-    /* Login button styling */
-    #loginBtn {
-      width: 100%;
-      padding: 14px;
-      font-size: 16px;
-      margin-top: 20px;
+    /* Loading spinner */
+    .spinner {
+      border: 4px solid rgba(0, 0, 0, 0.1);
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border-left-color: var(--primary-color);
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
     }
     
-    #logoutBtn {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      padding: 8px 16px;
-      background: #dc3545;
-    }
-    
-    #logoutBtn:hover {
-      background: #c82333;
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
   </style>
 </head>
 <body>
 
-  <button id="logoutBtn" style="display:none;">Logout</button>
-
   <div id="authCard" class="card">
     <div id="auth-message" class="info-message">
-      <h3>Genesys Cloud Authentication Required</h3>
-      <p>This tool requires access to your Genesys Cloud organization.</p>
-      <p>Click the button below to authenticate:</p>
-      <button id="loginBtn">Login to Genesys Cloud</button>
+      <div class="spinner"></div>
+      <p>Authenticating with Genesys Cloud...</p>
     </div>
   </div>
 
@@ -197,7 +189,7 @@
     const clientId = 'f2a0fa16-33cb-480b-a4ef-4766812dfb81';
     const redirectUri = 'https://gmcglynn88.github.io/OVO_ExternalContact/';
     
-    // CORRECT EUW2 OAuth URL - using the region-specific login endpoint
+    // EUW2 OAuth URL - using the region-specific login endpoint
     const oauthUrl = `https://login.euw2.pure.cloud/oauth/authorize?client_id=${encodeURIComponent(clientId)}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=conversations:email:write%20routing:queue:view%20users:read%20routing:queue:read&prompt=none`;
 
     // Whitelist configuration
@@ -221,19 +213,6 @@
     let accessToken = null;
 
     document.addEventListener('DOMContentLoaded', () => {
-      // Setup login button
-      document.getElementById('loginBtn').addEventListener('click', () => {
-        // Force new login by clearing any stored tokens
-        sessionStorage.removeItem('purecloud_token');
-        window.location.href = oauthUrl.replace('&prompt=none', '&prompt=login');
-      });
-      
-      // Setup logout button
-      document.getElementById('logoutBtn').addEventListener('click', () => {
-        sessionStorage.removeItem('purecloud_token');
-        location.reload();
-      });
-
       // --- TAB SWITCHING ---
       document.addEventListener("click", function(e) {
         if (!e.target.classList.contains("tab-button")) return;
@@ -251,32 +230,32 @@
         document.getElementById(target).classList.add("active");
       });
 
-      // Check for OAuth response in URL hash
-      handleOAuthResponse();
+      // Check URL for OAuth response first
+      checkAuthStatus();
     });
 
-    function handleOAuthResponse() {
+    function checkAuthStatus() {
       const hash = window.location.hash.substring(1);
       const params = new URLSearchParams(hash);
       
       // Check for errors first
       const error = params.get('error');
       if (error) {
-        const errorDesc = params.get('error_description');
-        let errorMessage = `OAuth Error: ${error}`;
-        if (errorDesc) errorMessage += ` - ${errorDesc}`;
-        
-        // If it's a login_required error, show login button
+        // If it's login_required, remove prompt=none and try again
         if (error === 'login_required' || error === 'interaction_required') {
-          showAuthMessage('Please log in to continue.', 'info');
-          document.getElementById('loginBtn').style.display = 'block';
-        } else {
-          showAuthMessage(errorMessage, 'error');
+          // Remove the stored token if any
+          sessionStorage.removeItem('purecloud_token');
+          // Redirect without prompt=none to show login page
+          window.location.href = oauthUrl.replace('&prompt=none', '');
+          return;
         }
+        
+        const errorDesc = params.get('error_description');
+        showAuthError(`Authentication failed: ${errorDesc || error}`);
         return;
       }
 
-      // Check for access token
+      // Check for access token in URL (this happens after OAuth redirect)
       accessToken = params.get('access_token');
       
       if (accessToken) {
@@ -288,63 +267,48 @@
         // No token in URL, check session storage
         accessToken = sessionStorage.getItem('purecloud_token');
         if (accessToken) {
-          // Validate token by making a simple API call
-          validateToken(accessToken);
+          // Validate the stored token
+          validateStoredToken();
         } else {
-          // No token at all, user needs to login
-          showAuthMessage('Please log in to use this tool.', 'info');
-          document.getElementById('loginBtn').style.display = 'block';
+          // No token at all, redirect to OAuth silently
+          window.location.href = oauthUrl;
         }
       }
     }
 
-    async function validateToken(token) {
+    async function validateStoredToken() {
       try {
-        // Test token with a simple API call to EUW2 endpoint
+        // Test token with a simple API call
         const response = await fetch('https://api.euw2.pure.cloud/api/v2/users/me', {
           headers: {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json'
           }
         });
 
         if (response.ok) {
           // Token is valid
-          accessToken = token;
           initializeApplication();
         } else {
-          // Token invalid or expired
+          // Token expired, get new one
           sessionStorage.removeItem('purecloud_token');
-          showAuthMessage('Your session has expired. Please log in again.', 'info');
-          document.getElementById('loginBtn').style.display = 'block';
+          window.location.href = oauthUrl;
         }
       } catch (error) {
-        // Network error or other issue
-        sessionStorage.removeItem('purecloud_token');
-        showAuthMessage('Unable to validate session. Please log in again.', 'error');
-        document.getElementById('loginBtn').style.display = 'block';
+        // Network error, try to continue anyway
+        console.warn('Could not validate token, proceeding anyway:', error);
+        initializeApplication();
       }
     }
 
-    function showAuthMessage(msg, type = 'info') {
-      const authMessage = document.getElementById('auth-message');
-      const colors = {
-        info: '#6b4e16',
-        error: '#b4231a',
-        success: '#14532d'
-      };
-      
-      authMessage.innerHTML = `
-        <h3>${type === 'error' ? 'Authentication Error' : 'Authentication Required'}</h3>
-        <p>${msg}</p>
-        ${type !== 'error' ? '<button id="loginBtn">Login to Genesys Cloud</button>' : ''}
+    function showAuthError(message) {
+      document.getElementById('auth-message').innerHTML = `
+        <div class="error-message">
+          <h3>Authentication Error</h3>
+          <p>${message}</p>
+          <p>Please refresh the page to try again.</p>
+        </div>
       `;
-      
-      if (type !== 'error') {
-        document.getElementById('loginBtn').addEventListener('click', () => {
-          window.location.href = oauthUrl.replace('&prompt=none', '&prompt=login');
-        });
-      }
     }
 
     function showMessage(msg, type='error'){
@@ -357,7 +321,6 @@
     function initializeApplication() {
       document.getElementById('authCard').style.display = 'none';
       document.getElementById('appContent').style.display = 'block';
-      document.getElementById('logoutBtn').style.display = 'block';
 
       populateDropdowns();
       document.getElementById('createInteractionBtn').addEventListener('click', createInteraction);
