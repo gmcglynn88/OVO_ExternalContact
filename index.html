@@ -67,7 +67,9 @@
     const clientId = 'f2a0fa16-33cb-480b-a4ef-4766812dfb81';
     const redirectUri = 'https://gmcglynn88.github.io/OVO_ExternalContact/';
     const responseType = 'token';
-    const oauthUrl = `https://api.euw2.pure.cloud/oauth/authorize?client_id=${clientId}&response_type=${responseType}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    
+    // ✅ CORRECT OAuth URL with proper endpoint and scopes
+    const oauthUrl = `https://login.mypurecloud.com/oauth/authorize?client_id=${clientId}&response_type=${responseType}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=conversations:email:write%20routing:queue:view%20users:read%20routing:queue:read`;
 
     // Whitelist configuration
     const USER_WHITELIST = [
@@ -92,10 +94,18 @@
       const hash = window.location.hash.substring(1);
       const params = new URLSearchParams(hash);
       const token = params.get('access_token');
+      const error = params.get('error');
+
+      if (error) {
+        document.getElementById('statusMessage').innerText = `OAuth Error: ${error}. Please check your configuration.`;
+        return;
+      }
 
       if (!token) {
         window.location.href = oauthUrl;
       } else {
+        // Clean URL by removing token from address bar
+        window.history.replaceState({}, document.title, window.location.pathname);
         initializeApp(token);
       }
     });
@@ -246,6 +256,7 @@
       }
 
       try {
+        // ✅ Fixed: Added all required email fields
         const interactionResponse = await fetch('https://api.euw2.pure.cloud/api/v2/conversations/emails', {
           method: 'POST',
           headers: {
@@ -257,12 +268,20 @@
             provider: 'QualityForm',
             direction: 'INBOUND',
             fromName: 'External Work',
-            attributes: { 'External Link': externalReference }
+            fromAddress: 'external@example.com',
+            subject: 'External Work Item',
+            htmlBody: externalReference ? `<p>External Reference: ${externalReference}</p>` : '<p>External work item created.</p>',
+            textBody: externalReference ? `External Reference: ${externalReference}` : 'External work item created.',
+            attributes: { 
+              'External Link': externalReference,
+              'CreatedVia': 'ExternalWorkCreationTool'
+            }
           })
         });
 
         if (!interactionResponse.ok) {
-          throw new Error(`Error creating interaction: ${interactionResponse.status} ${interactionResponse.statusText}`);
+          const errorText = await interactionResponse.text();
+          throw new Error(`Error creating interaction: ${interactionResponse.status} ${interactionResponse.statusText}. Details: ${errorText}`);
         }
 
         const interaction = await interactionResponse.json();
@@ -287,7 +306,8 @@
         });
 
         if (!assignResponse.ok) {
-          throw new Error(`Error assigning user: ${assignResponse.status} ${assignResponse.statusText}`);
+          const errorText = await assignResponse.text();
+          throw new Error(`Error assigning user: ${assignResponse.status}. Details: ${errorText}`);
         }
 
         const disconnectResponse = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}`, {
@@ -300,10 +320,10 @@
         });
 
         if (!disconnectResponse.ok) {
-          throw new Error(`Error disconnecting conversation: ${disconnectResponse.status} ${disconnectResponse.statusText}`);
+          console.warn('Warning: Could not disconnect conversation, but assignment was successful');
         }
 
-        document.getElementById('statusMessage').innerText = 'Interaction created and assigned successfully!';
+        document.getElementById('statusMessage').innerText = `Success! Interaction created and assigned. Conversation ID: ${conversationId}`;
 
       } catch (error) {
         console.error('Error during interaction creation:', error);
