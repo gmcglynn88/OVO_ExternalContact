@@ -1,75 +1,175 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>External Work Creation</title>
-  <link href="https://fonts.googleapis.com/css2?family=Proxima+Nova&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <style>
-    body {
-      font-family: 'Proxima Nova', Arial, sans-serif;
-      margin: 20px;
-      padding: 20px;
+    :root{
+      --primary-color:#63AB8F; --secondary-color:#4A8C7D; --border-color:#DEE2E6;
+      --light-bg:#F8F9FA; --card-bg:#FFFFFF; --text-color:#2C3E50; --text-light:#6C757D;
+      --pill:#e9f6f0;
     }
-    #logo-container {
-      text-align: center;
-      margin-bottom: 20px;
+
+    body{
+      font-family:'Aptos','Segoe UI',system-ui,-apple-system,Arial,sans-serif;
+      margin:20px;padding:20px;max-width:1200px;background:var(--light-bg);color:var(--text-color)
     }
-    #logo {
-      width: 300px;
+
+    .card{
+      background:var(--card-bg);
+      border:1px solid var(--border-color);
+      border-radius:12px;
+      padding:24px;
+      margin-top:16px;
+      box-shadow:0 1px 3px rgba(0,0,0,.08)
     }
-    label {
-      margin-top: 10px;
-      display: block;
-      font-weight: bold;
+
+    label{display:block;font-weight:600;margin-bottom:6px}
+    input,select,button,textarea{
+      padding:10px;border:1px solid var(--border-color);
+      border-radius:6px;background:#fff;font-size:14px
     }
-    select, input, button {
-      margin-top: 5px;
-      padding: 8px;
+    button{
+      background:var(--primary-color);color:#fff;font-weight:600;
+      cursor:pointer;transition:background .2s
+    }
+    button:hover{background:var(--secondary-color)}
+    button:disabled{background:var(--text-light);cursor:not-allowed}
+
+    .controls{
+      display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+      gap:16px;align-items:end
+    }
+
+    .full-width-btn{width:100%;padding:14px 18px;font-size:16px;margin-top:12px}
+
+    .muted{color:var(--text-light);font-size:12px}
+    .section-title{margin:0 0 10px;color:var(--secondary-color)}
+
+    #messageContainer{display:none;margin-top:12px}
+    .error-message{color:#b4231a;background:#fee2e2;border:1px solid #fecaca;padding:10px;border-radius:6px}
+    .success-message{color:#14532d;background:#dcfce7;border:1px solid #bbf7d0;padding:10px;border-radius:6px}
+    .info-message{color:#6b4e16;background:#fff7ed;border:1px solid #ffedd5;padding:10px;border-radius:6px}
+
+    #externalReference {
       width: 100%;
-      max-width: 300px;
+      max-width: 400px;
     }
-    #statusMessage {
+
+    /* --- Tabs (updated styling) --- */
+    .tab-container {
+      display: flex;
+      gap: 12px;
       margin-top: 20px;
-      color: green;
     }
-    .loading {
-      color: #666;
-      font-style: italic;
+
+    .tab-button {
+      padding: 10px 16px;
+      background: #ffffff;
+      border: 2px solid var(--primary-color);
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--primary-color);
+      transition: background .2s, color .2s;
+    }
+
+    .tab-button:hover {
+      background: var(--pill);
+    }
+
+    .tab-button.active {
+      background: var(--primary-color);
+      color: #ffffff;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
     }
   </style>
 </head>
 <body>
-  <div id="logo-container">
-    <img id="logo" src="https://raw.githubusercontent.com/gmcglynn88/ExternalWorkCreation/main/Consultinglogo.png" alt="Company Logo">
+
+  <div id="authCard" class="card">
+    <div id="auth-message" class="info-message">Authenticating with Genesys Cloud...</div>
   </div>
 
-  <h1>External Work Creation</h1>
+  <div id="appContent" style="display:none;">
 
-  <label for="queueSelect">Select Queue:</label>
-  <select id="queueSelect">
-    <option value="">Loading queues...</option>
-  </select>
+    <div class="tab-container">
+      <button class="tab-button active" data-tab="tab-create">Create Interaction</button>
+      <button class="tab-button" data-tab="tab-guide">How to Use</button>
+    </div>
 
-  <label for="userSelect">Select User:</label>
-  <select id="userSelect">
-    <option value="">Loading users...</option>
-  </select>
+    <!-- TAB: CREATE INTERACTION -->
+    <div id="tab-create" class="tab-content active">
 
-  <label for="externalReference">External Reference:</label>
-  <input type="text" id="externalReference" placeholder="Enter external reference (optional)">
+      <div id="messageContainer"></div>
 
-  <button id="createInteractionBtn">Create Proxy Interaction</button>
+      <div class="card">
+        <h2 class="section-title">Create Proxy Interaction</h2>
+        <div class="controls">
+          <div>
+            <label for="queueSelect">Select Queue:</label>
+            <select id="queueSelect">
+              <option value="">Loading queues...</option>
+            </select>
+          </div>
+          <div>
+            <label for="userSelect">Select User:</label>
+            <select id="userSelect">
+              <option value="">Loading users...</option>
+            </select>
+          </div>
+          <div>
+            <label for="externalReference">External Reference:</label>
+            <input type="text" id="externalReference" placeholder="Enter external reference (optional)">
+          </div>
+        </div>
 
-  <div id="statusMessage"></div>
+        <button id="createInteractionBtn" class="full-width-btn">Create Proxy Interaction</button>
+      </div>
+
+      <div id="results" class="card" style="display:none;"></div>
+
+    </div> <!-- end tab-create -->
+
+    <!-- TAB: HOW TO -->
+    <div id="tab-guide" class="tab-content">
+      <div class="card">
+        <h2 class="section-title">How to Use This Tool</h2>
+
+        <p><strong>1. Choose a Queue</strong><br>
+        Select the queue where the proxy interaction will be created.</p>
+
+        <p><strong>2. Choose a User</strong><br>
+        Pick the agent who should be assigned the generated interaction.</p>
+
+        <p><strong>3. Add an External Reference (Optional)</strong><br>
+        Enter anything useful such as a case number or URL. Leave blank if not required.</p>
+
+        <p><strong>4. Create the Proxy Interaction</strong><br>
+        Click <em>Create Proxy Interaction</em> to generate an inbound email, assign it, and disconnect it.</p>
+
+        <p><strong>5. Review the Result</strong><br>
+        A success or error message will appear showing what happened.</p>
+
+        <p><strong>6. Repeat as Needed</strong><br>
+        You can create as many proxy interactions as needed.</p>
+      </div>
+    </div>
+
+  </div> <!-- end appContent -->
 
   <script>
+    // ===== OAuth Config for London (EUW2) Genesys Org =====
     const clientId = 'f2a0fa16-33cb-480b-a4ef-4766812dfb81';
     const redirectUri = 'https://gmcglynn88.github.io/OVO_ExternalContact/';
-    const responseType = 'token';
-    
-    // ✅ CORRECT OAuth URL with proper endpoint and scopes
-    const oauthUrl = `https://login.mypurecloud.com/oauth/authorize?client_id=${clientId}&response_type=${responseType}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=conversations:email:write%20routing:queue:view%20users:read%20routing:queue:read`;
+    const oauthUrl = `https://login.mypurecloud.com/oauth/authorize?client_id=${encodeURIComponent(clientId)}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=conversations:email:write%20routing:queue:view%20users:read%20routing:queue:read`;
 
     // Whitelist configuration
     const USER_WHITELIST = [
@@ -85,54 +185,87 @@
       '660c4154-ba9b-4e84-90ec-c9c9b409ac41'
     ];
 
-    // Queue whitelist - add your specific queue IDs here
     const QUEUE_WHITELIST = [
       '4a6f26c7-2b69-4c34-99e2-e156230ec2bd'
     ];
 
+    let accessToken = null;
+
     document.addEventListener('DOMContentLoaded', () => {
+
+      // --- TAB SWITCHING ---
+      document.addEventListener("click", function(e) {
+        if (!e.target.classList.contains("tab-button")) return;
+
+        document.querySelectorAll(".tab-button").forEach(btn =>
+          btn.classList.remove("active")
+        );
+        e.target.classList.add("active");
+
+        const target = e.target.dataset.tab;
+
+        document.querySelectorAll(".tab-content").forEach(tab =>
+          tab.classList.remove("active")
+        );
+        document.getElementById(target).classList.add("active");
+      });
+
+      // OAuth parsing
       const hash = window.location.hash.substring(1);
       const params = new URLSearchParams(hash);
-      const token = params.get('access_token');
-      const error = params.get('error');
+      const qparams = new URLSearchParams(window.location.search);
 
-      if (error) {
-        document.getElementById('statusMessage').innerText = `OAuth Error: ${error}. Please check your configuration.`;
+      const oauthError = params.get('error') || qparams.get('error');
+      const oauthErrorDesc = params.get('error_description') || qparams.get('error_description');
+
+      if (oauthError) {
+        document.getElementById('auth-message').textContent = `OAuth error: ${oauthErrorDesc || oauthError}`;
+        document.getElementById('auth-message').className = 'error-message';
         return;
       }
 
-      if (!token) {
-        window.location.href = oauthUrl;
-      } else {
+      accessToken = params.get('access_token');
+
+      if (accessToken) {
+        sessionStorage.setItem('purecloud_token', accessToken);
         // Clean URL by removing token from address bar
         window.history.replaceState({}, document.title, window.location.pathname);
-        initializeApp(token);
+        initializeApplication();
+      } else if (sessionStorage.getItem('purecloud_token')) {
+        accessToken = sessionStorage.getItem('purecloud_token');
+        initializeApplication();
+      } else {
+        window.location.href = oauthUrl;
       }
     });
 
-    function initializeApp(token) {
-      populateDropdowns(token);
-
-      document.getElementById('createInteractionBtn').addEventListener('click', () => {
-        createInteraction(token);
-      });
+    function showMessage(msg, type='error'){
+      const box = document.getElementById('messageContainer');
+      box.innerHTML = `<div class="${type}-message">${msg}</div>`;
+      box.style.display = 'block';
+      if (type === 'success') setTimeout(()=> box.style.display='none', 5000);
     }
 
-    async function populateDropdowns(token) {
-      try {
-        // Populate queues
-        await populateQueues(token);
-        
-        // Populate users
-        await populateUsers(token);
+    function initializeApplication() {
+      document.getElementById('authCard').style.display = 'none';
+      document.getElementById('appContent').style.display = 'block';
 
+      populateDropdowns();
+      document.getElementById('createInteractionBtn').addEventListener('click', createInteraction);
+    }
+
+    async function populateDropdowns() {
+      try {
+        await Promise.all([
+          populateQueues(),
+          populateUsers()
+        ]);
       } catch (error) {
-        console.error('Error populating dropdowns:', error);
-        document.getElementById('statusMessage').innerText = `Error loading data: ${error.message}`;
+        showMessage(`Error loading data: ${error.message}`, 'error');
       }
     }
 
-    async function populateQueues(token) {
+    async function populateQueues() {
       const queueSelect = document.getElementById('queueSelect');
       
       // If we have a queue whitelist, use it directly
@@ -142,7 +275,10 @@
         // Fetch details for each whitelisted queue
         const queuePromises = QUEUE_WHITELIST.map(queueId => 
           fetch(`https://api.euw2.pure.cloud/api/v2/routing/queues/${queueId}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: { 
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            }
           }).then(response => {
             if (!response.ok) throw new Error(`Failed to fetch queue ${queueId}`);
             return response.json();
@@ -161,19 +297,19 @@
         } catch (error) {
           console.error('Error fetching whitelisted queues:', error);
           // Fallback to fetching all queues if whitelist fails
-          await fetchAllQueues(token, queueSelect);
+          await fetchAllQueues(queueSelect);
         }
       } else {
         // No queue whitelist, fetch all queues with pagination
-        await fetchAllQueues(token, queueSelect);
+        await fetchAllQueues(queueSelect);
       }
     }
 
-    async function fetchAllQueues(token, queueSelect) {
+    async function fetchAllQueues(queueSelect) {
       queueSelect.innerHTML = '<option value="">Loading all queues...</option>';
       
       try {
-        const queues = await fetchAllPages('https://api.euw2.pure.cloud/api/v2/routing/queues', token);
+        const queues = await fetchAllPages('https://api.euw2.pure.cloud/api/v2/routing/queues');
         queueSelect.innerHTML = '<option value="">Select a queue</option>';
         queues.forEach(queue => {
           const option = document.createElement('option');
@@ -187,14 +323,17 @@
       }
     }
 
-    async function populateUsers(token) {
+    async function populateUsers() {
       const userSelect = document.getElementById('userSelect');
       userSelect.innerHTML = '<option value="">Loading specific users...</option>';
 
       // Fetch details for each whitelisted user
       const userPromises = USER_WHITELIST.map(userId => 
         fetch(`https://api.euw2.pure.cloud/api/v2/users/${userId}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: { 
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          }
         }).then(response => {
           if (!response.ok) throw new Error(`Failed to fetch user ${userId}`);
           return response.json();
@@ -217,50 +356,60 @@
       }
     }
 
-    async function fetchAllPages(url, token) {
+    async function fetchAllPages(url) {
       let allItems = [];
       let pageNumber = 1;
       let hasMorePages = true;
 
       while (hasMorePages) {
         const response = await fetch(`${url}?pageNumber=${pageNumber}&pageSize=25`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: { 
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          }
         });
 
-        if (!response.ok) {
-          throw new Error(`Error fetching data: ${response.status} ${response.statusText}`);
-        }
+        if (!response.ok) throw new Error(`Error fetching data: ${response.status} ${response.statusText}`);
 
         const data = await response.json();
-        allItems = allItems.concat(data.entities);
+        allItems = allItems.concat(data.entities || []);
 
-        if (data.pageCount > pageNumber) {
-          pageNumber++;
-        } else {
-          hasMorePages = false;
-        }
+        if (data.pageCount > pageNumber) pageNumber++;
+        else hasMorePages = false;
       }
 
       return allItems;
     }
 
-    async function createInteraction(token) {
+    async function createInteraction() {
+      const resultsDiv = document.getElementById('results');
+      resultsDiv.style.display = 'block';
+      resultsDiv.innerHTML = '';
+
       const queueId = document.getElementById('queueSelect').value;
       const userId = document.getElementById('userSelect').value;
       const externalReference = document.getElementById('externalReference').value;
 
-      // Validation
-      if (!queueId || !userId) {
-        document.getElementById('statusMessage').innerText = 'Please select both a queue and a user.';
-        return;
+      if (!queueId) { 
+        resultsDiv.innerHTML = `<div class="error-message">Please select a queue.</div>`; 
+        return; 
+      }
+      if (!userId) { 
+        resultsDiv.innerHTML = `<div class="error-message">Please select a user.</div>`; 
+        return; 
       }
 
+      const button = document.getElementById('createInteractionBtn');
+      button.disabled = true;
+      const originalLabel = button.textContent;
+      button.textContent = 'Processing...';
+
       try {
-        // ✅ Fixed: Added all required email fields
+        // Create email interaction with London EUW2 endpoint
         const interactionResponse = await fetch('https://api.euw2.pure.cloud/api/v2/conversations/emails', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
@@ -287,19 +436,25 @@
         const interaction = await interactionResponse.json();
         const conversationId = interaction.id;
 
+        // Get conversation details
         const conversationDetailsResponse = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/${conversationId}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: { 
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          }
         });
-        if (!conversationDetailsResponse.ok) {
+
+        if (!conversationDetailsResponse.ok)
           throw new Error(`Error fetching conversation details: ${conversationDetailsResponse.status} ${conversationDetailsResponse.statusText}`);
-        }
+
         const conversationDetails = await conversationDetailsResponse.json();
         const participantId = conversationDetails.participants[1].id;
 
+        // Assign to user
         const assignResponse = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}/participants/${participantId}/replace`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({ userId: userId })
@@ -310,10 +465,11 @@
           throw new Error(`Error assigning user: ${assignResponse.status}. Details: ${errorText}`);
         }
 
+        // Disconnect the conversation
         const disconnectResponse = await fetch(`https://api.euw2.pure.cloud/api/v2/conversations/emails/${conversationId}`, {
           method: 'PATCH',
           headers: {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({ state: 'disconnected' })
@@ -323,11 +479,14 @@
           console.warn('Warning: Could not disconnect conversation, but assignment was successful');
         }
 
-        document.getElementById('statusMessage').innerText = `Success! Interaction created and assigned. Conversation ID: ${conversationId}`;
+        resultsDiv.innerHTML = `<div class="success-message">Success! Interaction created and assigned. Conversation ID: ${conversationId}</div>`;
+        document.getElementById('externalReference').value = '';
 
       } catch (error) {
-        console.error('Error during interaction creation:', error);
-        document.getElementById('statusMessage').innerText = `Error: ${error.message}`;
+        resultsDiv.innerHTML = `<div class="error-message">Error: ${error.message}</div>`;
+      } finally {
+        button.disabled = false;
+        button.textContent = originalLabel;
       }
     }
   </script>
